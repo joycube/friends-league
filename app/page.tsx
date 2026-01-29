@@ -57,7 +57,7 @@ export default function FootballLeagueApp() {
   
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
   const [statView, setStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
-  const [historyStatView, setHistoryStatView] = useState<'GOAL' | 'ASSIST'>('GOAL'); // 🔥 [New] History Toggle
+  const [historyStatView, setHistoryStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -165,7 +165,7 @@ export default function FootballLeagueApp() {
   }, [seasons, viewSeasonId]);
 
   const historyData = useMemo(() => {
-    const tMap = new Map<string, {name:string, owner:string, logo:string, w:number, d:number, l:number, pts:number, seasons:number}>();
+    const tMap = new Map<string, {name:string, owner:string, logo:string, w:number, d:number, l:number, pts:number}>();
     const oMap = new Map<string, {name:string, w:number, d:number, l:number, pts:number, prize:number}>();
     const pMap = new Map<string, {name:string, owner:string, goals:number, assists:number}>();
 
@@ -193,10 +193,9 @@ export default function FootballLeagueApp() {
 
       const rankedTeams = Array.from(seasonTeams.values()).sort((a,b) => b.points - a.points);
       rankedTeams.forEach((t, idx) => {
-        if(!tMap.has(t.name)) tMap.set(t.name, {name:t.name, owner:t.ownerName, logo:t.logo, w:0, d:0, l:0, pts:0, seasons:0});
+        if(!tMap.has(t.name)) tMap.set(t.name, {name:t.name, owner:t.ownerName, logo:t.logo, w:0, d:0, l:0, pts:0});
         const tm = tMap.get(t.name)!;
         tm.w+=t.win; tm.d+=t.draw; tm.l+=t.loss; tm.pts+=t.points;
-        tm.seasons += 1;
 
         if(!oMap.has(t.ownerName)) oMap.set(t.ownerName, {name:t.ownerName, w:0, d:0, l:0, pts:0, prize:0});
         const om = oMap.get(t.ownerName)!;
@@ -252,7 +251,6 @@ export default function FootballLeagueApp() {
     }
   };
 
-  // 🔥 [ALGORITHM] Tournament & League Generator
   const getStageName = (teamCount: number) => {
     if(teamCount === 2) return "Final";
     if(teamCount === 4) return "Semi-finals";
@@ -270,7 +268,6 @@ export default function FootballLeagueApp() {
       const rounds: Round[] = [];
 
       if(isTournament) {
-        // Tournament: Initial Round
         const shuffled = teams.sort(() => Math.random() - 0.5);
         const matches: Match[] = [];
         for(let i=0; i<shuffled.length; i+=2) {
@@ -287,7 +284,6 @@ export default function FootballLeagueApp() {
         }
         rounds.push({ round: 1, matches, seasonId: recordActiveS.id, name: getStageName(teams.length) });
       } else {
-        // League Logic
         let allMatches: {home:Team, away:Team}[] = [];
         for(let i=0; i<teams.length; i++) {
           for(let j=i+1; j<teams.length; j++) {
@@ -323,13 +319,17 @@ export default function FootballLeagueApp() {
       }
 
       await updateDoc(doc(db, "seasons", String(adminTab)), { rounds });
-      alert("스케줄 생성 완료!");
+      if(confirm("스케줄 생성 완료! 스케줄 메뉴로 이동하시겠습니까?")) {
+        setCurrentView('SCHEDULE');
+        setViewSeasonId(recordActiveS.id);
+      }
     }
   };
 
+  // 🔥 [Fix] Match Editing & Default Score '0'
   const handleMatchClick = (m: Match) => { 
     setEditingMatch({ ...m, homeScorers: m.homeScorers || [], awayScorers: m.awayScorers || [], homeAssists: m.homeAssists || [], awayAssists: m.awayAssists || [] }); 
-    setMatchInputs({ homeScore: m.homeScore, awayScore: m.awayScore, youtube: m.youtubeUrl }); 
+    setMatchInputs({ homeScore: m.homeScore || '0', awayScore: m.awayScore || '0', youtube: m.youtubeUrl }); 
   };
   
   const handleRecordAdd = (type: string) => {
@@ -360,7 +360,6 @@ export default function FootballLeagueApp() {
     setEditingMatch({ ...editingMatch, [f]: list.filter(r => r.id !== id) });
   };
 
-  // 🔥 [Fix] Match Save & Tournament Next Round Generation Logic
   const saveMatchResult = async () => {
     if(!editingMatch) return;
     
@@ -375,19 +374,18 @@ export default function FootballLeagueApp() {
       homeScore: matchInputs.homeScore, 
       awayScore: matchInputs.awayScore, 
       youtubeUrl: matchInputs.youtube, 
-      status: 'FINISHED' as const 
+      status: 'FINISHED' as const
     };
 
     let updatedRounds = targetSeason.rounds!.map(r => ({ ...r, matches: r.matches.map(m => m.id === editingMatch.id ? finalMatch : m) }));
 
-    // 🔥 Tournament Automatic Progression
+    // 🔥 [Fix] Tournament Logic: Remove existing 'Finals' before creating new one
     if(targetSeason.type === 'TOURNAMENT') {
       const currentRoundIdx = updatedRounds.findIndex(r => r.matches.some(m => m.id === editingMatch.id));
       const currentRound = updatedRounds[currentRoundIdx];
       const isRoundComplete = currentRound.matches.every(m => m.status === 'FINISHED');
 
       if(isRoundComplete) {
-        // Logic: Determine Winners & Losers
         const winners: Team[] = [];
         const losers: Team[] = [];
 
@@ -400,11 +398,11 @@ export default function FootballLeagueApp() {
           else { winners.push(awayTeam); losers.push(homeTeam); }
         });
 
+        // 🔥 Remove potential duplicate next round
+        updatedRounds = updatedRounds.filter(r => r.round <= currentRound.round);
+
         const nextRoundMatches: Match[] = [];
-        
-        // Final & 3rd Place Generation
         if(winners.length === 2) {
-          // Final
           nextRoundMatches.push({
             id: `${targetSeason.id}_FINAL`, seasonId: targetSeason.id,
             home: winners[0].name, away: winners[1].name,
@@ -413,7 +411,6 @@ export default function FootballLeagueApp() {
             homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
             status: 'UPCOMING', youtubeUrl: '', stage: 'Final', matchLabel: '🏆 FINAL'
           });
-          // 3rd Place
           nextRoundMatches.push({
             id: `${targetSeason.id}_3RD`, seasonId: targetSeason.id,
             home: losers[0].name, away: losers[1].name,
@@ -425,7 +422,6 @@ export default function FootballLeagueApp() {
           updatedRounds.push({ round: currentRound.round + 1, matches: nextRoundMatches, seasonId: targetSeason.id, name: 'Finals' });
         } 
         else if (winners.length > 2) {
-          // Next Regular Round (Semi-finals etc.)
           for(let i=0; i<winners.length; i+=2) {
             nextRoundMatches.push({
               id: `${targetSeason.id}_R${currentRound.round+1}_M${i/2}`, seasonId: targetSeason.id,
@@ -433,9 +429,7 @@ export default function FootballLeagueApp() {
               homeLogo: winners[i].logo, awayLogo: winners[i+1].logo,
               homeOwner: winners[i].ownerName, awayOwner: winners[i+1].ownerName,
               homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
-              status: 'UPCOMING', youtubeUrl: '', 
-              stage: getStageName(winners.length), 
-              matchLabel: `${getStageName(winners.length)} - Match ${(i/2)+1}`
+              status: 'UPCOMING', youtubeUrl: '', stage: getStageName(winners.length), matchLabel: `${getStageName(winners.length)} - Match ${(i/2)+1}`
             });
           }
           updatedRounds.push({ round: currentRound.round + 1, matches: nextRoundMatches, seasonId: targetSeason.id, name: getStageName(winners.length) });
@@ -449,6 +443,7 @@ export default function FootballLeagueApp() {
   };
 
   const handleSaveMaster = async () => { try { if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam as any); else await addDoc(collection(db,"master_teams"), manualTeam); setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); alert("저장 완료"); } catch(e) { console.error(e); alert("실패"); } };
+  const handleDeleteMasterTeam = async (id: string) => { if(confirm("팀을 삭제하시겠습니까?")) { await deleteDoc(doc(db, "master_teams", id)); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); } };
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{name:i.name,logo:i.logo||'',category:i.category||'CLUB',region:i.region||'',tier:i.tier||'A'}); setBulkInput(''); alert("완료"); } catch { alert("JSON 오류"); } };
   const filteredTeams = masterTeams.filter(t => (manageTab==='ALL'||t.category===manageTab) && (manageTier==='ALL'||t.tier===manageTier) && (manageRegion==='ALL'||t.region===manageRegion) && t.name.toLowerCase().includes(manageSearch.toLowerCase()));
   const allManageRegions = Array.from(new Set((manageTab==='ALL'?masterTeams:masterTeams.filter(t=>t.category===manageTab)).map(t=>t.region))).sort();
@@ -462,7 +457,7 @@ export default function FootballLeagueApp() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
           <h1 className="text-4xl md:text-6xl text-white font-black italic">eFOOTBALL LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_30</p>
+          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_31</p>
         </div>
       </div>
 
@@ -489,11 +484,12 @@ export default function FootballLeagueApp() {
               </div>
             </div>
 
+            {/* 🔥 [UI Update] Standing Table Widths */}
             {rankingTab === 'STANDINGS' && (
               <div className="bg-[#0f172a] rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
                   <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                    <tr><th className="p-4 text-center w-12">#</th><th className="p-4 w-auto">Club</th><th className="p-4 text-center w-10">P</th><th className="p-4 text-center w-10">W</th><th className="p-4 text-center w-10">D</th><th className="p-4 text-center w-10">L</th><th className="p-4 text-center w-12 hidden md:table-cell">GF</th><th className="p-4 text-center w-12 hidden md:table-cell">GA</th><th className="p-4 text-center w-12">GD</th><th className="p-4 text-center w-16 text-emerald-400">Pts</th></tr>
+                    <tr><th className="p-4 text-center w-8">#</th><th className="p-4 w-auto">Club</th><th className="p-4 text-center w-8">P</th><th className="p-4 text-center w-8">W</th><th className="p-4 text-center w-8">D</th><th className="p-4 text-center w-8">L</th><th className="p-4 text-center w-8 hidden md:table-cell">GF</th><th className="p-4 text-center w-8 hidden md:table-cell">GA</th><th className="p-4 text-center w-10">GD</th><th className="p-4 text-center w-12 text-emerald-400">Pts</th></tr>
                   </thead>
                   <tbody className="font-sans not-italic font-medium">
                     {activeRankingData.teams.map((t, i) => (
@@ -542,7 +538,6 @@ export default function FootballLeagueApp() {
                       </div>
                       {m.status === 'FINISHED' && (
                         <div className="border-t border-slate-800 pt-3 flex flex-col gap-2 font-sans not-italic">
-                          {/* 🔥 [Fix] Vertical List for better mobile view */}
                           {(m.homeScorers||[]).map((s, i) => <div key={`h${i}`} className="text-xs text-left text-blue-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.home})</span></div>)}
                           {(m.awayScorers||[]).map((s, i) => <div key={`a${i}`} className="text-xs text-right text-red-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.away})</span></div>)}
                         </div>
@@ -564,33 +559,33 @@ export default function FootballLeagueApp() {
                 <button key={sub} onClick={() => setHistoryTab(sub as any)} className={`px-6 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-colors ${historyTab === sub ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{sub}</button>
               ))}
             </div>
-            {historyTab === 'TEAMS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Team</th><th className="p-4 text-center">Seasons</th><th className="p-4 text-center">W-D-L</th><th className="p-4 text-center">PTS</th></tr></thead><tbody>{historyData.teams.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 bg-white rounded-full p-0.5"/>{t.name}</td><td className="p-4 text-center text-slate-500">{t.seasons}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td></tr>))}</tbody></table></div>)}
-            {historyTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Record</th><th className="p-4 text-center">Total PTS</th><th className="p-4 text-right">Accumulated Prize</th></tr></thead><tbody>{historyData.owners.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.name}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td><td className="p-4 text-right text-emerald-400">{t.prize>0?`₩${t.prize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
             
-            {/* 🔥 [Fix] History Player Toggle */}
-            {historyTab === 'PLAYERS' && (
-              <div className="space-y-4">
-                <div className="flex justify-center gap-2">
-                  <button onClick={() => setHistoryStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='GOAL'?'bg-orange-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button>
-                  <button onClick={() => setHistoryStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button>
-                </div>
-                <div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden">
-                  <table className="w-full text-left text-xs uppercase">
-                    <thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Count</th></tr></thead>
-                    <tbody>
-                      {historyData.players.filter(p => (historyStatView==='GOAL'?p.goals>0:p.assists>0)).sort((a,b) => historyStatView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 30).map((p, i) => (
-                        <tr key={i} className="border-b border-slate-800/50 font-sans not-italic">
-                          <td className="p-4">{i+1}</td>
-                          <td className="p-4 font-bold text-white">{p.name}</td>
-                          <td className="p-4 text-slate-500 text-[10px]">{p.owner}</td>
-                          <td className={`p-4 text-center font-bold text-lg ${historyStatView==='GOAL'?'text-orange-400':'text-blue-400'}`}>{historyStatView==='GOAL'?p.goals:p.assists}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            {/* 🔥 [UI Update] All Time Teams: Show Owner under Team, Remove Seasons col */}
+            {historyTab === 'TEAMS' && (
+              <div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden">
+                <table className="w-full text-left text-xs uppercase">
+                  <thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Team</th><th className="p-4 text-center">W-D-L</th><th className="p-4 text-center">PTS</th></tr></thead>
+                  <tbody>
+                    {historyData.teams.sort((a,b) => b.pts - a.pts).map((t, i) => (
+                      <tr key={i} className="border-b border-slate-800/50 font-sans not-italic">
+                        <td className="p-4">{i+1}</td>
+                        <td className="p-4 flex items-center gap-3">
+                          <img src={t.logo} alt="team" className="w-8 h-8 bg-white rounded-full p-0.5"/>
+                          <div className="flex flex-col">
+                            <span className="text-white font-bold">{t.name}</span>
+                            <span className="text-[10px] text-slate-500 uppercase">{t.owner}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td>
+                        <td className="p-4 text-center font-bold text-orange-500">{t.pts}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
+            {historyTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Record</th><th className="p-4 text-center">Total PTS</th><th className="p-4 text-right">Accumulated Prize</th></tr></thead><tbody>{historyData.owners.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.name}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td><td className="p-4 text-right text-emerald-400">{t.prize>0?`₩${t.prize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
+            {historyTab === 'PLAYERS' && (<div className="space-y-4"><div className="flex justify-center gap-2"><button onClick={() => setHistoryStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='GOAL'?'bg-orange-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button><button onClick={() => setHistoryStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button></div><div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4 text-center">Goals</th><th className="p-4 text-center">Assists</th></tr></thead><tbody>{historyData.players.filter(p => (historyStatView==='GOAL'?p.goals>0:p.assists>0)).sort((a,b) => historyStatView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 30).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-center text-emerald-400 font-bold">{p.goals}</td><td className="p-4 text-center text-blue-400 font-bold">{p.assists}</td></tr>))}</tbody></table></div></div>)}
           </div>
         )}
 
@@ -612,13 +607,13 @@ export default function FootballLeagueApp() {
               </>
             ) : (
               <>
-              <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 space-y-6"><div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-sans not-italic"><select value={manageTab} onChange={e => setManageTab(e.target.value as any)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">All Cat</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select><select value={manageTier} onChange={e => setManageTier(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">All Tier</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}</option>)}</select><select value={manageRegion} onChange={e => setManageRegion(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">All Region</option>{allManageRegions.map(r=><option key={r} value={r}>{r}</option>)}</select><input value={manageSearch} onChange={e => setManageSearch(e.target.value)} placeholder="Search..." className="bg-slate-950 p-3 rounded border border-slate-700 text-xs" /></div><div className="grid grid-cols-2 md:grid-cols-6 gap-4">{filteredTeams.slice(0, visibleTeamCount).map(mt => (<div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all"><img src={mt.logo} alt="team" className="w-10 h-10 object-contain bg-white rounded-full p-1" /><p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p></div>))}</div>{visibleTeamCount < filteredTeams.length && (<button onClick={() => setVisibleTeamCount(prev => prev + 18)} className="w-full py-3 bg-slate-800 text-slate-400 font-bold text-xs rounded-xl hover:bg-slate-700 transition-colors">👇 LOAD MORE TEAMS</button>)}</div><section ref={manualFormRef} className="p-8 rounded-3xl border bg-slate-900/60 border-slate-800"><h3 className="text-xl mb-4 font-bold">{editTeamId ? 'EDIT TEAM' : 'ADD TEAM'}</h3><div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans not-italic mb-4"><select value={manualTeam.category} onChange={e => setManualTeam({...manualTeam, category: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="CLUB">Club</option><option value="NATIONAL">National</option></select><select value={manualTeam.tier} onChange={e => setManualTeam({...manualTeam, tier: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="S">S</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select><input value={manualTeam.region} onChange={e => setManualTeam({...manualTeam, region: e.target.value})} placeholder="Region" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /><input value={manualTeam.name} onChange={e => setManualTeam({...manualTeam, name: e.target.value})} placeholder="Name" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /><input value={manualTeam.logo} onChange={e => setManualTeam({...manualTeam, logo: e.target.value})} placeholder="Logo URL" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /></div><button onClick={handleSaveMaster} className="w-full bg-emerald-600 py-3 rounded font-bold">SAVE</button></section><section className="bg-slate-900/60 p-8 rounded-3xl border border-orange-500/30"><h3 className="text-orange-400 font-bold mb-4">BULK IMPORT</h3><textarea value={bulkInput} onChange={e => setBulkInput(e.target.value)} className="w-full h-24 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs mb-4" /><button onClick={handleBulk} className="w-full bg-orange-600 py-3 rounded font-bold">IMPORT</button></section>
+              <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 space-y-6"><div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-sans not-italic"><select value={manageTab} onChange={e => setManageTab(e.target.value as any)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">All Cat</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select><select value={manageTier} onChange={e => setManageTier(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">All Tier</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}</option>)}</select><select value={manageRegion} onChange={e => setManageRegion(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">All Region</option>{allManageRegions.map(r=><option key={r} value={r}>{r}</option>)}</select><input value={manageSearch} onChange={e => setManageSearch(e.target.value)} placeholder="Search..." className="bg-slate-950 p-3 rounded border border-slate-700 text-xs" /></div><div className="grid grid-cols-2 md:grid-cols-6 gap-4">{filteredTeams.slice(0, visibleTeamCount).map(mt => (<div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all relative group"><img src={mt.logo} alt="team" className="w-10 h-10 object-contain bg-white rounded-full p-1" /><p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p><button onClick={(e) => {e.stopPropagation(); handleDeleteMasterTeam(mt.id!);}} className="absolute top-2 right-2 text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button></div>))}</div>{visibleTeamCount < filteredTeams.length && (<button onClick={() => setVisibleTeamCount(prev => prev + 18)} className="w-full py-3 bg-slate-800 text-slate-400 font-bold text-xs rounded-xl hover:bg-slate-700 transition-colors">👇 LOAD MORE TEAMS</button>)}</div><section ref={manualFormRef} className="p-8 rounded-3xl border bg-slate-900/60 border-slate-800"><h3 className="text-xl mb-4 font-bold">{editTeamId ? 'EDIT TEAM' : 'ADD TEAM'}</h3><div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans not-italic mb-4"><select value={manualTeam.category} onChange={e => setManualTeam({...manualTeam, category: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="CLUB">Club</option><option value="NATIONAL">National</option></select><select value={manualTeam.tier} onChange={e => setManualTeam({...manualTeam, tier: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="S">S</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select><input value={manualTeam.region} onChange={e => setManualTeam({...manualTeam, region: e.target.value})} placeholder="Region" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /><input value={manualTeam.name} onChange={e => setManualTeam({...manualTeam, name: e.target.value})} placeholder="Name" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /><input value={manualTeam.logo} onChange={e => setManualTeam({...manualTeam, logo: e.target.value})} placeholder="Logo URL" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /></div><button onClick={handleSaveMaster} className="w-full bg-emerald-600 py-3 rounded font-bold">SAVE</button></section><section className="bg-slate-900/60 p-8 rounded-3xl border border-orange-500/30"><h3 className="text-orange-400 font-bold mb-4">BULK IMPORT</h3><textarea value={bulkInput} onChange={e => setBulkInput(e.target.value)} className="w-full h-24 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs mb-4" /><button onClick={handleBulk} className="w-full bg-orange-600 py-3 rounded font-bold">IMPORT</button></section>
               </>
             )}
           </div>
         )}
 
-        {/* 🔥 [Fix] Mobile Touch & Zoom Safe Modal */}
+        {/* Modal: Match Edit */}
         {editingMatch && (
           <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4 overflow-y-auto">
             <div className="bg-slate-900 p-6 rounded-3xl border border-slate-700 w-full max-w-5xl space-y-6 my-auto shadow-2xl relative">
