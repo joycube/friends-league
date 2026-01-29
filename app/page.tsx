@@ -455,7 +455,7 @@ export default function FootballLeagueApp() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
           <h1 className="text-4xl md:text-6xl text-white font-black italic">eFOOTBALL LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_32</p>
+          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_33</p>
         </div>
       </div>
 
@@ -482,26 +482,43 @@ export default function FootballLeagueApp() {
               </div>
             </div>
 
-            {/* 🔥 [UI Update] Standing Table Widths */}
+            {/* 🔥 [UI Update] Standing Table Optimized for Mobile */}
             {rankingTab === 'STANDINGS' && (
               <div className="bg-[#0f172a] rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
                   <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                    <tr><th className="p-4 text-center w-8">#</th><th className="p-4 w-auto">Club</th><th className="p-4 text-center w-8">P</th><th className="p-4 text-center w-8">W</th><th className="p-4 text-center w-8">D</th><th className="p-4 text-center w-8">L</th><th className="p-4 text-center w-8 hidden md:table-cell">GF</th><th className="p-4 text-center w-8 hidden md:table-cell">GA</th><th className="p-4 text-center w-10">GD</th><th className="p-4 text-center w-12 text-emerald-400">Pts</th></tr>
+                    <tr>
+                      <th className="py-3 px-1 md:p-4 text-center w-6 md:w-8 text-[10px] md:text-xs">#</th>
+                      <th className="py-3 px-1 md:p-4 w-auto text-[10px] md:text-xs">Club</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-6 md:w-8 text-[10px] md:text-xs">P</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-6 md:w-8 text-[10px] md:text-xs">W</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-6 md:w-8 text-[10px] md:text-xs">D</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-6 md:w-8 text-[10px] md:text-xs">L</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-8 hidden md:table-cell text-[10px] md:text-xs">GF</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-8 hidden md:table-cell text-[10px] md:text-xs">GA</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-8 md:w-10 text-[10px] md:text-xs">GD</th>
+                      <th className="py-3 px-1 md:p-4 text-center w-8 md:w-12 text-emerald-400 text-[10px] md:text-xs">Pts</th>
+                    </tr>
                   </thead>
                   <tbody className="font-sans not-italic font-medium">
                     {activeRankingData.teams.map((t, i) => (
                       <tr key={t.id} className="border-b border-slate-800/50 hover:bg-white/5 transition-colors">
-                        <td className="p-4 text-center text-slate-500">{i+1}</td>
-                        <td className="p-4 flex items-center gap-3"><img src={t.logo} alt="team" className="w-8 h-8 object-contain" /><div className="flex flex-col"><span className="text-white font-bold text-sm">{t.name}</span><span className="text-[10px] text-slate-500 uppercase">{t.ownerName}</span></div></td>
-                        <td className="p-4 text-center text-white">{t.win+t.draw+t.loss}</td>
-                        <td className="p-4 text-center text-slate-300">{t.win}</td>
-                        <td className="p-4 text-center text-slate-300">{t.draw}</td>
-                        <td className="p-4 text-center text-slate-300">{t.loss}</td>
-                        <td className="p-4 text-center text-slate-400 hidden md:table-cell">{t.gf}</td>
-                        <td className="p-4 text-center text-slate-400 hidden md:table-cell">{t.ga}</td>
-                        <td className={`p-4 text-center font-bold ${t.gd>0?'text-green-400':t.gd<0?'text-red-400':'text-slate-400'}`}>{t.gd>0?`+${t.gd}`:t.gd}</td>
-                        <td className="p-4 text-center font-black text-emerald-400 text-base">{t.points}</td>
+                        <td className="py-3 px-1 md:p-4 text-center text-slate-500 text-[10px] md:text-sm">{i+1}</td>
+                        <td className="py-3 px-1 md:p-4 flex items-center gap-2 md:gap-3">
+                          <img src={t.logo} alt="team" className="w-6 h-6 md:w-8 md:h-8 object-contain" />
+                          <div className="flex flex-col">
+                            <span className="text-white font-bold text-[10px] md:text-sm truncate max-w-[80px] md:max-w-none">{t.name}</span>
+                            <span className="text-[9px] md:text-[10px] text-slate-500 uppercase">{t.ownerName}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-1 md:p-4 text-center text-white text-[10px] md:text-sm">{t.win+t.draw+t.loss}</td>
+                        <td className="py-3 px-1 md:p-4 text-center text-slate-300 text-[10px] md:text-sm">{t.win}</td>
+                        <td className="py-3 px-1 md:p-4 text-center text-slate-300 text-[10px] md:text-sm">{t.draw}</td>
+                        <td className="py-3 px-1 md:p-4 text-center text-slate-300 text-[10px] md:text-sm">{t.loss}</td>
+                        <td className="py-3 px-1 md:p-4 text-center text-slate-400 hidden md:table-cell text-[10px] md:text-sm">{t.gf}</td>
+                        <td className="py-3 px-1 md:p-4 text-center text-slate-400 hidden md:table-cell text-[10px] md:text-sm">{t.ga}</td>
+                        <td className={`py-3 px-1 md:p-4 text-center font-bold text-[10px] md:text-sm ${t.gd>0?'text-green-400':t.gd<0?'text-red-400':'text-slate-400'}`}>{t.gd>0?`+${t.gd}`:t.gd}</td>
+                        <td className="py-3 px-1 md:p-4 text-center font-black text-emerald-400 text-xs md:text-base">{t.points}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -527,16 +544,36 @@ export default function FootballLeagueApp() {
                 <h3 className="text-sm text-slate-500 font-bold mb-4 uppercase tracking-widest">{r.name || `Round ${r.round}`}</h3>
                 <div className="grid grid-cols-1 gap-4">
                   {r.matches.map(m => (
-                    <div key={m.id} onClick={() => handleMatchClick(m)} className="bg-slate-950 p-6 rounded-xl border border-slate-800 flex flex-col gap-4 cursor-pointer hover:border-blue-500 hover:bg-slate-900/80 transition-all">
+                    <div key={m.id} onClick={() => handleMatchClick(m)} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-4 cursor-pointer hover:border-blue-500 hover:bg-slate-900/80 transition-all">
                       {m.matchLabel && <span className="text-center text-xs text-orange-400 font-bold -mb-2">{m.matchLabel}</span>}
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-4 w-5/12"><img src={m.homeLogo} alt="home" className="w-10 h-10 bg-white rounded-full p-1"/><div className="flex flex-col"><span className="text-base font-bold text-white">{m.home}</span><span className="text-xs text-slate-500 font-sans not-italic">{m.homeOwner}</span></div></div>
-                        <div className="flex flex-col items-center w-2/12"><span className={`text-2xl font-black ${m.status==='FINISHED'?'text-white':'text-slate-600'}`}>{m.status==='FINISHED'?`${m.homeScore} : ${m.awayScore}`:'VS'}</span></div>
-                        <div className="flex items-center gap-4 w-5/12 justify-end"><div className="flex flex-col items-end"><span className="text-base font-bold text-white">{m.away}</span><span className="text-xs text-slate-500 font-sans not-italic">{m.awayOwner}</span></div><img src={m.awayLogo} alt="away" className="w-10 h-10 bg-white rounded-full p-1"/></div>
+                      {/* 🔥 [UI Update] Full Width Scoreboard */}
+                      <div className="flex justify-between items-center w-full">
+                        {/* Home: Left Aligned */}
+                        <div className="flex items-center gap-3 w-[40%] overflow-hidden justify-start">
+                          <img src={m.homeLogo} alt="home" className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-full p-1 shrink-0"/>
+                          <div className="flex flex-col items-start overflow-hidden">
+                            <span className="text-sm md:text-base font-bold text-white truncate w-full text-left">{m.home}</span>
+                            <span className="text-[10px] md:text-xs text-slate-500 font-sans not-italic truncate w-full text-left">{m.homeOwner}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Score: Center */}
+                        <div className="flex flex-col items-center justify-center w-[20%]">
+                          <span className={`text-2xl md:text-3xl font-black ${m.status==='FINISHED'?'text-white':'text-slate-600'}`}>{m.status==='FINISHED'?`${m.homeScore} : ${m.awayScore}`:'VS'}</span>
+                        </div>
+
+                        {/* Away: Right Aligned */}
+                        <div className="flex items-center gap-3 w-[40%] overflow-hidden justify-end">
+                          <div className="flex flex-col items-end overflow-hidden">
+                            <span className="text-sm md:text-base font-bold text-white truncate w-full text-right">{m.away}</span>
+                            <span className="text-[10px] md:text-xs text-slate-500 font-sans not-italic truncate w-full text-right">{m.awayOwner}</span>
+                          </div>
+                          <img src={m.awayLogo} alt="away" className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-full p-1 shrink-0"/>
+                        </div>
                       </div>
+
                       {m.status === 'FINISHED' && (
                         <div className="border-t border-slate-800 pt-3 flex flex-col gap-2 font-sans not-italic">
-                          {/* 🔥 [Fix] Vertical List for better mobile view */}
                           {(m.homeScorers||[]).map((s, i) => <div key={`h${i}`} className="text-xs text-left text-blue-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.home})</span></div>)}
                           {(m.awayScorers||[]).map((s, i) => <div key={`a${i}`} className="text-xs text-right text-red-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.away})</span></div>)}
                         </div>
@@ -558,8 +595,7 @@ export default function FootballLeagueApp() {
                 <button key={sub} onClick={() => setHistoryTab(sub as any)} className={`px-6 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-colors ${historyTab === sub ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{sub}</button>
               ))}
             </div>
-            {/* 🔥 [Fix] Added 'seasons' to type definition */}
-            {historyTab === 'TEAMS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Team</th><th className="p-4 text-center">W-D-L</th><th className="p-4 text-center">PTS</th></tr></thead><tbody>{historyData.teams.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 bg-white rounded-full p-0.5"/><div className="flex flex-col"><span className="text-white font-bold">{t.name}</span><span className="text-[10px] text-slate-500 uppercase">{t.owner}</span></div></td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td></tr>))}</tbody></table></div>)}
+            {historyTab === 'TEAMS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Team</th><th className="p-4 text-center">Seasons</th><th className="p-4 text-center">W-D-L</th><th className="p-4 text-center">PTS</th></tr></thead><tbody>{historyData.teams.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 bg-white rounded-full p-0.5"/><div className="flex flex-col"><span className="text-white font-bold">{t.name}</span><span className="text-[10px] text-slate-500 uppercase">{t.owner}</span></div></td><td className="p-4 text-center text-slate-500">{t.seasons}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td></tr>))}</tbody></table></div>)}
             {historyTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Record</th><th className="p-4 text-center">Total PTS</th><th className="p-4 text-right">Accumulated Prize</th></tr></thead><tbody>{historyData.owners.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.name}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td><td className="p-4 text-right text-emerald-400">{t.prize>0?`₩${t.prize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
             {historyTab === 'PLAYERS' && (<div className="space-y-4"><div className="flex justify-center gap-2"><button onClick={() => setHistoryStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='GOAL'?'bg-orange-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button><button onClick={() => setHistoryStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button></div><div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4 text-center">Goals</th><th className="p-4 text-center">Assists</th></tr></thead><tbody>{historyData.players.filter(p => (historyStatView==='GOAL'?p.goals>0:p.assists>0)).sort((a,b) => historyStatView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 30).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-center text-emerald-400 font-bold">{p.goals}</td><td className="p-4 text-center text-blue-400 font-bold">{p.assists}</td></tr>))}</tbody></table></div></div>)}
           </div>
@@ -578,7 +614,7 @@ export default function FootballLeagueApp() {
                 {typeof adminTab === 'number' && <button onClick={handleDeleteSeason} className="w-full md:w-auto px-6 py-4 bg-red-900/50 border border-red-800 text-red-400 rounded-xl font-bold hover:bg-red-900 transition-colors whitespace-nowrap">🗑️ 게임 삭제하기</button>}
               </div>
               {adminTab === 'OWNER' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4"><h3 className="text-purple-400 font-bold">오너 관리</h3><div className="flex gap-4 flex-col md:flex-row"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="닉네임" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="이미지 URL (선택사항)" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleSaveOwner} className={`px-6 py-3 rounded font-bold whitespace-nowrap ${editOwnerId ? 'bg-blue-600' : 'bg-purple-600'}`}>{editOwnerId ? 'UPDATE' : 'ADD'}</button>{editOwnerId && <button onClick={()=>{setEditOwnerId(null); setNewOwnerName(''); setNewOwnerPhoto('')}} className="bg-slate-700 px-6 rounded">CANCEL</button>}</div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">{owners.map(o => (<div key={o.id} onClick={() => handleEditOwnerClick(o)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center gap-4 relative group cursor-pointer hover:border-blue-500"><img src={o.photo} alt="owner" className="w-12 h-12 rounded-full border-2 border-slate-700" /><span className="text-sm truncate">{o.nickname}</span><button onClick={(e) => {e.stopPropagation(); if(confirm('삭제?')) deleteDoc(doc(db,"users",o.docId!));}} className="ml-auto text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button></div>))}</div></div>}
-              {adminTab === 'NEW' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="시즌 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>{inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}</div></div><div className="bg-slate-950 p-4 rounded-xl border border-slate-800"><p className="text-xs text-slate-500 mb-2">총 상금 (입력 후 자동 배분됨)</p><input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-900 p-2 rounded w-full border border-slate-700 mb-2 text-white" /><div className="flex justify-between text-xs text-slate-400 gap-2 overflow-x-auto"><div className="flex flex-col"><label>1등</label><input value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>2등</label><input value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>3등</label><input value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>득점왕</label><input value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div></div></div><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-3 rounded font-bold">시즌 생성하기</button></div>}
+              {adminTab === 'NEW' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="시즌 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>{inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}</div></div><div className="bg-slate-950 p-4 rounded-xl border border-slate-800"><p className="text-xs text-slate-500 mb-2">Total Prize Pool</p><input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-900 p-2 rounded w-full border border-slate-700 mb-2 text-white" /><div className="flex justify-between text-xs text-slate-400 gap-2 overflow-x-auto"><div className="flex flex-col"><label>1st</label><input value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>2nd</label><input value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>3rd</label><input value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>Scorer</label><input value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div></div></div><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-3 rounded font-bold">시즌 생성하기</button></div>}
               {typeof adminTab === 'number' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-blue-500/30 space-y-6"><div className="flex justify-between items-center"><h3 className="text-blue-400 font-bold">팀 배정</h3></div><div className="grid grid-cols-1 md:grid-cols-5 gap-2 font-sans not-italic"><select value={selOwnerId} onChange={e => setSelOwnerId(Number(e.target.value))} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="">오너 선택</option>{owners.map(o=><option key={o.id} value={o.id}>{o.nickname}</option>)}</select><select value={selCategory} onChange={e => {setSelCategory(e.target.value as any); setSelRegion('ALL');}} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">전체</option><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select><select value={selTier} onChange={e => setSelTier(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">전체 등급</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}등급</option>)}</select><select value={selRegion} onChange={e => setSelRegion(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">리그/지역</option>{Array.from(new Set((selCategory==='ALL'?masterTeams:masterTeams.filter(m=>m.category===selCategory)).map(m=>m.region))).sort().map(r=><option key={r} value={r}>{r}</option>)}</select><button onClick={handleRandomDraw} className="bg-slate-800 border border-slate-600 rounded text-xs font-bold">🎲</button></div><div className="flex gap-2"><select value={selTeamName} onChange={e => setSelTeamName(e.target.value)} className="flex-1 bg-slate-950 p-3 rounded border border-blue-500 text-blue-400 font-bold font-sans not-italic"><option value="">팀 선택...</option>{stepTeams.map(mt => <option key={mt.id} value={mt.name}>{mt.name}</option>)}</select><button onClick={handleConfirmTeam} className="bg-blue-600 px-6 rounded font-bold">배정</button></div><div className="pt-6 border-t border-slate-800"><p className="text-[10px] text-slate-500 mb-4 font-bold">현재 배정된 팀 ({(recordActiveS?.teams || []).length})</p><div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">{(recordActiveS?.teams || []).map(t => (<span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" /><span className="text-white font-bold">{t.name}</span><span className="text-slate-500 text-[9px] uppercase">{t.tier} • {t.ownerName}</span></span>))}</div></div><div className="border-t border-slate-800 pt-6 mt-4"><button onClick={handleGenerateSchedule} className="w-full bg-slate-800 text-emerald-400 border border-emerald-900 py-3 rounded-xl text-sm font-bold hover:bg-emerald-900/20 transition-all">📅 스케쥴 만들기</button></div></div>}
               </>
             ) : (
@@ -589,7 +625,7 @@ export default function FootballLeagueApp() {
           </div>
         )}
 
-        {/* 🔥 [UX] Modal: Match Edit (Safe Zoom & Confirm Dialog) */}
+        {/* Modal: Match Edit */}
         {editingMatch && (
           <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4 overflow-y-auto">
             <div className="bg-slate-900 p-6 rounded-3xl border border-slate-700 w-full max-w-5xl space-y-6 my-auto shadow-2xl relative">
