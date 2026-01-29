@@ -20,27 +20,27 @@ interface Match {
   id: string; seasonId: number; home: string; away: string; homeLogo: string; awayLogo: string;
   homeOwner: string; awayOwner: string; homeScore: string; awayScore: string;
   homeScorers: MatchRecord[]; awayScorers: MatchRecord[]; homeAssists: MatchRecord[]; awayAssists: MatchRecord[];
-  status: 'UPCOMING' | 'FINISHED' | 'BYE'; youtubeUrl: string; stage?: string;
+  status: 'UPCOMING' | 'FINISHED' | 'BYE'; youtubeUrl: string; stage?: string; matchLabel?: string;
 }
 interface Round { round: number; matches: Match[]; seasonId: number; name?: string; }
 
 // --- [컴포넌트] 기록 입력기 ---
 const RecordInput = ({ type, inputValue, onInputChange, onAdd, onRemove, records, label, colorClass }: any) => {
   return (
-    <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 h-full flex flex-col">
+    <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 h-full flex flex-col relative z-10">
       <p className={`text-xs font-bold mb-2 uppercase ${colorClass} border-b border-slate-700/50 pb-1`}>{label}</p>
       <div className="flex gap-2 mb-3">
-        <input type="text" value={inputValue.name} onChange={(e) => onInputChange(type, 'name', e.target.value)} placeholder="Player" className="flex-1 bg-slate-900 text-base p-2 rounded-lg border border-slate-600 focus:border-blue-500 outline-none text-white placeholder-slate-600 w-full" />
+        <input type="text" value={inputValue.name} onChange={(e) => onInputChange(type, 'name', e.target.value)} placeholder="Player" className="flex-1 bg-slate-900 text-base p-2 rounded-lg border border-slate-600 focus:border-blue-500 outline-none text-white w-full" />
         <input type="number" value={inputValue.count} onChange={(e) => onInputChange(type, 'count', e.target.value)} className="w-12 bg-slate-900 text-base p-2 rounded-lg border border-slate-600 focus:border-blue-500 outline-none text-center text-white" />
-        <button onClick={() => onAdd(type)} className="bg-slate-700 text-white w-9 rounded-lg font-bold hover:bg-slate-600 transition-colors flex items-center justify-center text-lg">+</button>
+        <button onClick={() => onAdd(type)} className="bg-slate-700 text-white w-10 h-10 rounded-lg font-bold hover:bg-slate-600 transition-colors flex items-center justify-center text-xl touch-manipulation">+</button>
       </div>
       <div className="flex flex-col gap-1 overflow-y-auto max-h-[100px] flex-1">
         {(records || []).map((r:any) => (
-          <div key={r.id} className="flex justify-between items-center bg-slate-900 px-3 py-1.5 rounded-md border border-slate-700">
+          <div key={r.id} className="flex justify-between items-center bg-slate-900 px-3 py-2 rounded-md border border-slate-700">
             <span className="text-sm text-slate-300">{r.name}</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white bg-slate-700 px-1.5 rounded">{r.count}</span>
-              <button onClick={() => onRemove(type, r.id)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
+              <span className="text-xs font-bold text-white bg-slate-700 px-2 py-0.5 rounded">{r.count}</span>
+              <button onClick={() => onRemove(type, r.id)} className="text-red-400 hover:text-red-300 text-sm px-2">✕</button>
             </div>
           </div>
         ))}
@@ -57,6 +57,7 @@ export default function FootballLeagueApp() {
   
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
   const [statView, setStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
+  const [historyStatView, setHistoryStatView] = useState<'GOAL' | 'ASSIST'>('GOAL'); // 🔥 [New] History Toggle
 
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -164,7 +165,6 @@ export default function FootballLeagueApp() {
   }, [seasons, viewSeasonId]);
 
   const historyData = useMemo(() => {
-    // 🔥 [Fix] Add 'seasons' to type definition to fix build error
     const tMap = new Map<string, {name:string, owner:string, logo:string, w:number, d:number, l:number, pts:number, seasons:number}>();
     const oMap = new Map<string, {name:string, w:number, d:number, l:number, pts:number, prize:number}>();
     const pMap = new Map<string, {name:string, owner:string, goals:number, assists:number}>();
@@ -193,11 +193,10 @@ export default function FootballLeagueApp() {
 
       const rankedTeams = Array.from(seasonTeams.values()).sort((a,b) => b.points - a.points);
       rankedTeams.forEach((t, idx) => {
-        // 🔥 [Fix] Initialize 'seasons' count
         if(!tMap.has(t.name)) tMap.set(t.name, {name:t.name, owner:t.ownerName, logo:t.logo, w:0, d:0, l:0, pts:0, seasons:0});
         const tm = tMap.get(t.name)!;
         tm.w+=t.win; tm.d+=t.draw; tm.l+=t.loss; tm.pts+=t.points;
-        tm.seasons += 1; // Increment season count
+        tm.seasons += 1;
 
         if(!oMap.has(t.ownerName)) oMap.set(t.ownerName, {name:t.ownerName, w:0, d:0, l:0, pts:0, prize:0});
         const om = oMap.get(t.ownerName)!;
@@ -253,6 +252,14 @@ export default function FootballLeagueApp() {
     }
   };
 
+  // 🔥 [ALGORITHM] Tournament & League Generator
+  const getStageName = (teamCount: number) => {
+    if(teamCount === 2) return "Final";
+    if(teamCount === 4) return "Semi-finals";
+    if(teamCount <= 8) return "Quarter-finals";
+    return `Round of ${teamCount}`;
+  };
+
   const handleGenerateSchedule = async () => {
     if(!recordActiveS || !recordActiveS.teams || recordActiveS.teams.length < 2) return alert("팀 2개 이상 필요");
     const isTournament = recordActiveS.type === 'TOURNAMENT';
@@ -263,6 +270,7 @@ export default function FootballLeagueApp() {
       const rounds: Round[] = [];
 
       if(isTournament) {
+        // Tournament: Initial Round
         const shuffled = teams.sort(() => Math.random() - 0.5);
         const matches: Match[] = [];
         for(let i=0; i<shuffled.length; i+=2) {
@@ -273,12 +281,13 @@ export default function FootballLeagueApp() {
               homeLogo: shuffled[i].logo, awayLogo: shuffled[i+1].logo,
               homeOwner: shuffled[i].ownerName, awayOwner: shuffled[i+1].ownerName,
               homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
-              status: 'UPCOMING', youtubeUrl: '', stage: 'Round 1'
+              status: 'UPCOMING', youtubeUrl: '', stage: getStageName(teams.length), matchLabel: `${getStageName(teams.length)} - Match ${(i/2)+1}`
             });
           }
         }
-        rounds.push({ round: 1, matches, seasonId: recordActiveS.id, name: 'Round of ' + shuffled.length });
+        rounds.push({ round: 1, matches, seasonId: recordActiveS.id, name: getStageName(teams.length) });
       } else {
+        // League Logic
         let allMatches: {home:Team, away:Team}[] = [];
         for(let i=0; i<teams.length; i++) {
           for(let j=i+1; j<teams.length; j++) {
@@ -351,11 +360,11 @@ export default function FootballLeagueApp() {
     setEditingMatch({ ...editingMatch, [f]: list.filter(r => r.id !== id) });
   };
 
+  // 🔥 [Fix] Match Save & Tournament Next Round Generation Logic
   const saveMatchResult = async () => {
     if(!editingMatch) return;
     
     const summary = `[경기 결과 확인]\n\n${editingMatch.home} ${matchInputs.homeScore} : ${matchInputs.awayScore} ${editingMatch.away}\n\n[홈 득점]\n${editingMatch.homeScorers.map(s=>`${s.name}(${s.count})`).join(', ') || '없음'}\n\n[원정 득점]\n${editingMatch.awayScorers.map(s=>`${s.name}(${s.count})`).join(', ') || '없음'}\n\n이대로 저장하시겠습니까?`;
-    
     if(!confirm(summary)) return;
 
     const targetSeason = seasons.find(s => s.id === editingMatch.seasonId);
@@ -366,13 +375,77 @@ export default function FootballLeagueApp() {
       homeScore: matchInputs.homeScore, 
       awayScore: matchInputs.awayScore, 
       youtubeUrl: matchInputs.youtube, 
-      status: 'FINISHED' 
+      status: 'FINISHED' as const 
     };
 
-    const updatedRounds = targetSeason.rounds!.map(r => ({ ...r, matches: r.matches.map(m => m.id === editingMatch.id ? finalMatch : m) })) as Round[];
+    let updatedRounds = targetSeason.rounds!.map(r => ({ ...r, matches: r.matches.map(m => m.id === editingMatch.id ? finalMatch : m) }));
+
+    // 🔥 Tournament Automatic Progression
+    if(targetSeason.type === 'TOURNAMENT') {
+      const currentRoundIdx = updatedRounds.findIndex(r => r.matches.some(m => m.id === editingMatch.id));
+      const currentRound = updatedRounds[currentRoundIdx];
+      const isRoundComplete = currentRound.matches.every(m => m.status === 'FINISHED');
+
+      if(isRoundComplete) {
+        // Logic: Determine Winners & Losers
+        const winners: Team[] = [];
+        const losers: Team[] = [];
+
+        currentRound.matches.forEach(m => {
+          const h = Number(m.homeScore);
+          const a = Number(m.awayScore);
+          const homeTeam = targetSeason.teams!.find(t=>t.name===m.home)!;
+          const awayTeam = targetSeason.teams!.find(t=>t.name===m.away)!;
+          if(h > a) { winners.push(homeTeam); losers.push(awayTeam); }
+          else { winners.push(awayTeam); losers.push(homeTeam); }
+        });
+
+        const nextRoundMatches: Match[] = [];
+        
+        // Final & 3rd Place Generation
+        if(winners.length === 2) {
+          // Final
+          nextRoundMatches.push({
+            id: `${targetSeason.id}_FINAL`, seasonId: targetSeason.id,
+            home: winners[0].name, away: winners[1].name,
+            homeLogo: winners[0].logo, awayLogo: winners[1].logo,
+            homeOwner: winners[0].ownerName, awayOwner: winners[1].ownerName,
+            homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
+            status: 'UPCOMING', youtubeUrl: '', stage: 'Final', matchLabel: '🏆 FINAL'
+          });
+          // 3rd Place
+          nextRoundMatches.push({
+            id: `${targetSeason.id}_3RD`, seasonId: targetSeason.id,
+            home: losers[0].name, away: losers[1].name,
+            homeLogo: losers[0].logo, awayLogo: losers[1].logo,
+            homeOwner: losers[0].ownerName, awayOwner: losers[1].ownerName,
+            homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
+            status: 'UPCOMING', youtubeUrl: '', stage: '3rd Place', matchLabel: '🥉 3rd Place Match'
+          });
+          updatedRounds.push({ round: currentRound.round + 1, matches: nextRoundMatches, seasonId: targetSeason.id, name: 'Finals' });
+        } 
+        else if (winners.length > 2) {
+          // Next Regular Round (Semi-finals etc.)
+          for(let i=0; i<winners.length; i+=2) {
+            nextRoundMatches.push({
+              id: `${targetSeason.id}_R${currentRound.round+1}_M${i/2}`, seasonId: targetSeason.id,
+              home: winners[i].name, away: winners[i+1].name,
+              homeLogo: winners[i].logo, awayLogo: winners[i+1].logo,
+              homeOwner: winners[i].ownerName, awayOwner: winners[i+1].ownerName,
+              homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
+              status: 'UPCOMING', youtubeUrl: '', 
+              stage: getStageName(winners.length), 
+              matchLabel: `${getStageName(winners.length)} - Match ${(i/2)+1}`
+            });
+          }
+          updatedRounds.push({ round: currentRound.round + 1, matches: nextRoundMatches, seasonId: targetSeason.id, name: getStageName(winners.length) });
+        }
+      }
+    }
+
     await updateDoc(doc(db, "seasons", String(targetSeason.id)), { rounds: updatedRounds });
     setEditingMatch(null); 
-    alert("✅ 경기 결과가 저장되고 랭킹에 반영되었습니다.");
+    alert("✅ 경기 결과가 저장되었습니다.");
   };
 
   const handleSaveMaster = async () => { try { if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam as any); else await addDoc(collection(db,"master_teams"), manualTeam); setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); alert("저장 완료"); } catch(e) { console.error(e); alert("실패"); } };
@@ -389,7 +462,7 @@ export default function FootballLeagueApp() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
           <h1 className="text-4xl md:text-6xl text-white font-black italic">eFOOTBALL LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_29</p>
+          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_30</p>
         </div>
       </div>
 
@@ -461,21 +534,17 @@ export default function FootballLeagueApp() {
                 <div className="grid grid-cols-1 gap-4">
                   {r.matches.map(m => (
                     <div key={m.id} onClick={() => handleMatchClick(m)} className="bg-slate-950 p-6 rounded-xl border border-slate-800 flex flex-col gap-4 cursor-pointer hover:border-blue-500 hover:bg-slate-900/80 transition-all">
+                      {m.matchLabel && <span className="text-center text-xs text-orange-400 font-bold -mb-2">{m.matchLabel}</span>}
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-4 w-5/12"><img src={m.homeLogo} alt="home" className="w-10 h-10 bg-white rounded-full p-1"/><div className="flex flex-col"><span className="text-base font-bold text-white">{m.home}</span><span className="text-xs text-slate-500 font-sans not-italic">{m.homeOwner}</span></div></div>
                         <div className="flex flex-col items-center w-2/12"><span className={`text-2xl font-black ${m.status==='FINISHED'?'text-white':'text-slate-600'}`}>{m.status==='FINISHED'?`${m.homeScore} : ${m.awayScore}`:'VS'}</span></div>
                         <div className="flex items-center gap-4 w-5/12 justify-end"><div className="flex flex-col items-end"><span className="text-base font-bold text-white">{m.away}</span><span className="text-xs text-slate-500 font-sans not-italic">{m.awayOwner}</span></div><img src={m.awayLogo} alt="away" className="w-10 h-10 bg-white rounded-full p-1"/></div>
                       </div>
                       {m.status === 'FINISHED' && (
-                        <div className="border-t border-slate-800 pt-3 flex justify-between font-sans not-italic">
-                          <div className="flex flex-col gap-1 w-1/2 items-start">
-                            {(m.homeScorers||[]).map((s, idx) => <span key={idx} className="text-xs text-slate-400">⚽ {s.name} {s.count>1?`(x${s.count})`:''}</span>)}
-                            {(m.homeAssists||[]).map((s, idx) => <span key={idx} className="text-[10px] text-slate-600">👟 {s.name} {s.count>1?`(x${s.count})`:''}</span>)}
-                          </div>
-                          <div className="flex flex-col gap-1 w-1/2 items-end text-right">
-                            {(m.awayScorers||[]).map((s, idx) => <span key={idx} className="text-xs text-slate-400">⚽ {s.name} {s.count>1?`(x${s.count})`:''}</span>)}
-                            {(m.awayAssists||[]).map((s, idx) => <span key={idx} className="text-[10px] text-slate-600">👟 {s.name} {s.count>1?`(x${s.count})`:''}</span>)}
-                          </div>
+                        <div className="border-t border-slate-800 pt-3 flex flex-col gap-2 font-sans not-italic">
+                          {/* 🔥 [Fix] Vertical List for better mobile view */}
+                          {(m.homeScorers||[]).map((s, i) => <div key={`h${i}`} className="text-xs text-left text-blue-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.home})</span></div>)}
+                          {(m.awayScorers||[]).map((s, i) => <div key={`a${i}`} className="text-xs text-right text-red-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.away})</span></div>)}
                         </div>
                       )}
                       {m.youtubeUrl && <a href={m.youtubeUrl} target="_blank" onClick={e=>e.stopPropagation()} className="block text-center text-xs text-red-400 hover:underline mt-2">▶ Watch Highlight</a>}
@@ -495,10 +564,33 @@ export default function FootballLeagueApp() {
                 <button key={sub} onClick={() => setHistoryTab(sub as any)} className={`px-6 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-colors ${historyTab === sub ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{sub}</button>
               ))}
             </div>
-            {/* 🔥 [Fix] Added 'seasons' to type definition */}
             {historyTab === 'TEAMS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Team</th><th className="p-4 text-center">Seasons</th><th className="p-4 text-center">W-D-L</th><th className="p-4 text-center">PTS</th></tr></thead><tbody>{historyData.teams.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 bg-white rounded-full p-0.5"/>{t.name}</td><td className="p-4 text-center text-slate-500">{t.seasons}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td></tr>))}</tbody></table></div>)}
             {historyTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Record</th><th className="p-4 text-center">Total PTS</th><th className="p-4 text-right">Accumulated Prize</th></tr></thead><tbody>{historyData.owners.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.name}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td><td className="p-4 text-right text-emerald-400">{t.prize>0?`₩${t.prize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
-            {historyTab === 'PLAYERS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4 text-center">Goals</th><th className="p-4 text-center">Assists</th></tr></thead><tbody>{historyData.players.sort((a,b) => (b.goals+b.assists) - (a.goals+a.assists)).slice(0, 30).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-center text-emerald-400 font-bold">{p.goals}</td><td className="p-4 text-center text-blue-400 font-bold">{p.assists}</td></tr>))}</tbody></table></div>)}
+            
+            {/* 🔥 [Fix] History Player Toggle */}
+            {historyTab === 'PLAYERS' && (
+              <div className="space-y-4">
+                <div className="flex justify-center gap-2">
+                  <button onClick={() => setHistoryStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='GOAL'?'bg-orange-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button>
+                  <button onClick={() => setHistoryStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button>
+                </div>
+                <div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden">
+                  <table className="w-full text-left text-xs uppercase">
+                    <thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Count</th></tr></thead>
+                    <tbody>
+                      {historyData.players.filter(p => (historyStatView==='GOAL'?p.goals>0:p.assists>0)).sort((a,b) => historyStatView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 30).map((p, i) => (
+                        <tr key={i} className="border-b border-slate-800/50 font-sans not-italic">
+                          <td className="p-4">{i+1}</td>
+                          <td className="p-4 font-bold text-white">{p.name}</td>
+                          <td className="p-4 text-slate-500 text-[10px]">{p.owner}</td>
+                          <td className={`p-4 text-center font-bold text-lg ${historyStatView==='GOAL'?'text-orange-400':'text-blue-400'}`}>{historyStatView==='GOAL'?p.goals:p.assists}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -526,11 +618,11 @@ export default function FootballLeagueApp() {
           </div>
         )}
 
-        {/* 🔥 [UX] Modal: Match Edit (Safe Zoom & Confirm Dialog) */}
+        {/* 🔥 [Fix] Mobile Touch & Zoom Safe Modal */}
         {editingMatch && (
-          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4 overflow-y-auto">
             <div className="bg-slate-900 p-6 rounded-3xl border border-slate-700 w-full max-w-5xl space-y-6 my-auto shadow-2xl relative">
-              <button onClick={() => setEditingMatch(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white text-2xl">✕</button>
+              <button onClick={() => setEditingMatch(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white text-2xl touch-manipulation">✕</button>
               <h3 className="text-center text-xl font-black italic tracking-tighter text-slate-400 border-b border-slate-800 pb-4">MATCH RESULT</h3>
               
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -552,8 +644,8 @@ export default function FootballLeagueApp() {
                     <span className="text-4xl font-black text-slate-600">:</span>
                     <input type="number" value={matchInputs.awayScore} onChange={e=>setMatchInputs({...matchInputs,awayScore:e.target.value})} className="w-24 h-24 text-5xl text-center bg-slate-950 rounded-2xl border-2 border-slate-700 focus:border-red-500 outline-none text-white font-black" placeholder="0" />
                   </div>
-                  <input value={matchInputs.youtube} onChange={e=>setMatchInputs({...matchInputs,youtube:e.target.value})} placeholder="YouTube Link" className="w-full bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-center focus:border-emerald-500 outline-none"/>
-                  <button onClick={saveMatchResult} className="w-full bg-emerald-600 py-4 rounded-xl font-bold text-lg hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20 mt-4">CONFIRM & SAVE</button>
+                  <input value={matchInputs.youtube} onChange={e=>setMatchInputs({...matchInputs,youtube:e.target.value})} placeholder="YouTube Link" className="w-full bg-slate-950 p-3 rounded-xl border border-slate-800 text-base text-center focus:border-emerald-500 outline-none"/>
+                  <button onClick={saveMatchResult} className="w-full bg-emerald-600 py-4 rounded-xl font-bold text-lg hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20 mt-4 touch-manipulation">CONFIRM & SAVE</button>
                 </div>
 
                 <div className="flex flex-col gap-4">
