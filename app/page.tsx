@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -292,7 +293,16 @@ export default function FootballLeagueApp() {
     setEditingMatch(null); alert("저장 완료");
   };
 
-  const handleSaveMaster = async () => { if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam); else await addDoc(collection(db,"master_teams"), manualTeam); setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); };
+  const handleSaveMaster = async () => { 
+    try {
+      if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam as any); 
+      else await addDoc(collection(db,"master_teams"), manualTeam); 
+      setEditTeamId(null); 
+      setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); 
+      alert("저장 완료");
+    } catch(e) { console.error(e); alert("저장 실패"); }
+  };
+
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{name:i.name,logo:i.logo||'',category:i.category||'CLUB',region:i.region||'',tier:i.tier||'A'}); setBulkInput(''); alert("완료"); } catch { alert("JSON 오류"); } };
   const filteredTeams = masterTeams.filter(t => (manageTab==='ALL'||t.category===manageTab) && (manageTier==='ALL'||t.tier===manageTier) && (manageRegion==='ALL'||t.region===manageRegion) && t.name.toLowerCase().includes(manageSearch.toLowerCase()));
   
@@ -307,7 +317,7 @@ export default function FootballLeagueApp() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
           <h1 className="text-4xl md:text-6xl text-white font-black italic">eFOOTBALL LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_23</p>
+          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_24</p>
         </div>
       </div>
 
@@ -502,6 +512,16 @@ export default function FootballLeagueApp() {
               <div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4">
                 <h3 className="text-purple-400 font-bold">OWNER REGISTRATION</h3>
                 <div className="flex gap-4"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="Nickname" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleAddOwner} className="bg-purple-600 px-6 rounded font-bold">ADD</button></div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                  {owners.map(o => (
+                    <div key={o.id} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center gap-4 relative group">
+                      {/* 🔥 [Fix] alt 속성 추가 */}
+                      <img src={o.photo} alt="owner" className="w-12 h-12 rounded-full border-2 border-slate-700" />
+                      <span className="text-sm truncate">{o.nickname}</span>
+                      <button onClick={() => deleteDoc(doc(db,"users",o.docId!))} className="ml-auto text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {adminTab === 'NEW' && (
@@ -525,6 +545,19 @@ export default function FootballLeagueApp() {
                   <select value={selTeamName} onChange={e => setSelTeamName(e.target.value)} className="flex-1 bg-slate-950 p-3 rounded border border-blue-500 text-blue-400 font-bold font-sans not-italic"><option value="">Select Team...</option>{stepTeams.map(mt => <option key={mt.id} value={mt.name}>{mt.name}</option>)}</select>
                   <button onClick={handleConfirmTeam} className="bg-blue-600 px-6 rounded font-bold">ASSIGN</button>
                 </div>
+                <div className="pt-6 border-t border-slate-800">
+                  <p className="text-[10px] text-slate-500 mb-4 font-bold">CURRENT ROSTER</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(recordActiveS?.teams || []).map(t => (
+                      <span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2">
+                        {/* 🔥 [Fix] alt 속성 추가 */}
+                        <img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
+                        <span className="text-white font-bold">{t.name}</span>
+                        <span className="text-slate-500 text-[9px] uppercase">{t.tier} • {t.ownerName}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
                 <div className="border-t border-slate-800 pt-6 mt-4">
                   <button onClick={handleGenerateSchedule} className="w-full bg-slate-800 text-emerald-400 border border-emerald-900 py-3 rounded-xl text-sm font-bold hover:bg-emerald-900/20 transition-all">📅 GENERATE FULL SCHEDULE</button>
                 </div>
@@ -546,6 +579,7 @@ export default function FootballLeagueApp() {
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 {filteredTeams.map(mt => (
                   <div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all">
+                    {/* 🔥 [Fix] alt 속성 추가 */}
                     <img src={mt.logo} alt="team" className="w-10 h-10 object-contain bg-white rounded-full p-1" />
                     <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
                   </div>
@@ -579,8 +613,10 @@ export default function FootballLeagueApp() {
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-2xl space-y-6">
               <div className="flex justify-between items-center border-b border-slate-800 pb-4"><h3 className="text-xl font-bold">MATCH RESULT</h3><button onClick={() => setEditingMatch(null)}>✕</button></div>
               <div className="flex justify-center items-center gap-8">
+                {/* 🔥 [Fix] alt 속성 추가 */}
                 <div className="text-center"><img src={editingMatch.homeLogo} alt="home" className="w-12 h-12 bg-white rounded-full p-2 mx-auto"/><p className="font-bold mt-2">{editingMatch.home}</p></div>
                 <div className="flex gap-4 items-center"><input type="number" value={matchInputs.homeScore} onChange={e=>setMatchInputs({...matchInputs,homeScore:e.target.value})} className="w-16 h-16 text-3xl text-center bg-slate-950 rounded border border-slate-700"/><span className="text-xl">-</span><input type="number" value={matchInputs.awayScore} onChange={e=>setMatchInputs({...matchInputs,awayScore:e.target.value})} className="w-16 h-16 text-3xl text-center bg-slate-950 rounded border border-slate-700"/></div>
+                {/* 🔥 [Fix] alt 속성 추가 */}
                 <div className="text-center"><img src={editingMatch.awayLogo} alt="away" className="w-12 h-12 bg-white rounded-full p-2 mx-auto"/><p className="font-bold mt-2">{editingMatch.away}</p></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
