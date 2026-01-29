@@ -76,7 +76,7 @@ export default function FootballLeagueApp() {
   const [selRegion, setSelRegion] = useState<string>('ALL');
   const [selTeamName, setSelTeamName] = useState<string>('');
 
-  // Team Manage
+  // Team Manage (UX Optimization)
   const [manageTab, setManageTab] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL');
   const [manageTier, setManageTier] = useState('ALL');
   const [manageRegion, setManageRegion] = useState('ALL');
@@ -84,6 +84,7 @@ export default function FootballLeagueApp() {
   const [editTeamId, setEditTeamId] = useState<string | null>(null);
   const [manualTeam, setManualTeam] = useState<MasterTeam>({ name: '', logo: '', category: 'CLUB', region: '', tier: 'A' });
   const [bulkInput, setBulkInput] = useState('');
+  const [visibleTeamCount, setVisibleTeamCount] = useState(18); // 🔥 [UX] 더보기 기능용 상태
   const manualFormRef = useRef<HTMLDivElement>(null);
 
   // Match Editing
@@ -100,6 +101,11 @@ export default function FootballLeagueApp() {
     }); 
   }, [inputTotalPrize]);
   
+  useEffect(() => {
+    // 필터 변경 시 더보기 초기화
+    setVisibleTeamCount(18);
+  }, [manageTab, manageTier, manageRegion, manageSearch]);
+
   useEffect(() => {
     const u1 = onSnapshot(query(collection(db, "users"), orderBy("id", "asc")), s => setOwners(s.docs.map(d => ({...d.data(), docId: d.id} as Owner))));
     const u2 = onSnapshot(collection(db, "master_teams"), s => setMasterTeams(s.docs.map(d => ({id:d.id, ...d.data()} as MasterTeam))));
@@ -190,7 +196,7 @@ export default function FootballLeagueApp() {
     return { teams: Array.from(tMap.values()), owners: Array.from(oMap.values()), players: Array.from(pMap.values()) };
   }, [seasons]);
 
-  // --- Handlers: Owner Manage (Updated for Edit) ---
+  // --- Handlers: Owner Manage ---
   const handleSaveOwner = async () => {
     if(!newOwnerName.trim()) return alert("입력하세요");
     const photo = newOwnerPhoto || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(newOwnerName)}`;
@@ -218,6 +224,17 @@ export default function FootballLeagueApp() {
       id, name: inputSeasonName, type: inputSeasonType, leagueMode: inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive: true, teams: [], rounds: [], prizes: { total: inputTotalPrize, ...prizes }
     });
     setAdminTab(id); setViewSeasonId(id); setInputSeasonName('');
+  };
+
+  // 🔥 [NEW] Delete Season Function
+  const handleDeleteSeason = async () => {
+    if(typeof adminTab !== 'number') return;
+    if(confirm("⚠️ 경고: 이 시즌과 관련된 모든 데이터(경기, 기록)가 삭제됩니다.\n정말 삭제하시겠습니까?")) {
+      await deleteDoc(doc(db, "seasons", String(adminTab)));
+      setAdminTab(0); 
+      setViewSeasonId(0);
+      alert("시즌이 삭제되었습니다.");
+    }
   };
   
   const recordActiveS = seasons.find(s => s.id === adminTab);
@@ -249,7 +266,6 @@ export default function FootballLeagueApp() {
       const teams = [...recordActiveS.teams];
       const isDouble = recordActiveS.leagueMode === 'DOUBLE';
       
-      // 1. Generate ALL Valid Matchups (Diff Owner)
       let allMatches: {home:Team, away:Team}[] = [];
       for(let i=0; i<teams.length; i++) {
         for(let j=i+1; j<teams.length; j++) {
@@ -260,12 +276,9 @@ export default function FootballLeagueApp() {
         }
       }
 
-      // 2. Shuffle Matches
       allMatches = allMatches.sort(() => Math.random() - 0.5);
 
-      // 3. Distribute to Rounds (Bin Packing)
       const rounds: Round[] = [];
-      
       const getRound = (idx: number) => {
         if(!rounds[idx]) rounds[idx] = { round: idx+1, matches: [], seasonId: recordActiveS.id };
         return rounds[idx];
@@ -289,7 +302,7 @@ export default function FootballLeagueApp() {
             });
             placed = true;
           } else {
-            rIdx++; // Try next round
+            rIdx++; 
           }
         }
       });
@@ -370,7 +383,7 @@ export default function FootballLeagueApp() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
           <h1 className="text-4xl md:text-6xl text-white font-black italic">eFOOTBALL LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_25</p>
+          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_26</p>
         </div>
       </div>
 
@@ -463,12 +476,36 @@ export default function FootballLeagueApp() {
 
             {rankingTab === 'HIGHLIGHTS' && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {activeRankingData.highlights.map((m, i) => (
-                  <div key={i} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                    <p className="text-xs font-bold mb-2 text-center text-slate-300">{m.home} vs {m.away}</p>
-                    <div className="aspect-video bg-black rounded overflow-hidden"><iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${m.youtubeUrl.split('v=')[1]||m.youtubeUrl.split('/').pop()}`} frameBorder="0" allowFullScreen></iframe></div>
-                  </div>
-                ))}
+                {activeRankingData.highlights.map((m, i) => {
+                  const hScore = Number(m.homeScore);
+                  const aScore = Number(m.awayScore);
+                  const winnerLogo = hScore > aScore ? m.homeLogo : (aScore > hScore ? m.awayLogo : null); // 무승부는 null
+                  
+                  return (
+                    <div key={i} className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-slate-600 transition-all group">
+                      <div className="aspect-video bg-black relative">
+                        <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${m.youtubeUrl.split('v=')[1]||m.youtubeUrl.split('/').pop()}`} frameBorder="0" allowFullScreen></iframe>
+                      </div>
+                      <div className="p-3 flex items-center justify-between bg-slate-950">
+                        <div className="flex items-center gap-3">
+                          {/* 승리팀 로고 강조, 무승부면 양팀 로고 작게 */}
+                          {winnerLogo ? (
+                            <img src={winnerLogo} alt="winner" className="w-8 h-8 object-contain" />
+                          ) : (
+                            <div className="flex -space-x-2">
+                              <img src={m.homeLogo} alt="home" className="w-6 h-6 object-contain rounded-full bg-white p-0.5" />
+                              <img src={m.awayLogo} alt="away" className="w-6 h-6 object-contain rounded-full bg-white p-0.5" />
+                            </div>
+                          )}
+                          <div className="flex flex-col">
+                            <span className="text-white font-bold text-sm tracking-tight">{m.home} vs {m.away}</span>
+                            <span className="text-emerald-400 text-xs font-bold">{m.homeScore} : {m.awayScore}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -555,12 +592,19 @@ export default function FootballLeagueApp() {
         {/* ================= VIEW: ADMIN ================= */}
         {currentView === 'ADMIN' && (
           <div className="animate-in fade-in space-y-10">
-            <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800">
+            <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 flex flex-col md:flex-row gap-4 items-center">
               <select value={adminTab} onChange={(e) => setAdminTab(e.target.value === 'NEW' || e.target.value === 'OWNER' ? e.target.value : Number(e.target.value))} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm font-sans not-italic">
                 <optgroup label="Core Options"><option value="NEW">➕ CREATE NEW SEASON</option><option value="OWNER">👤 MANAGE OWNERS</option></optgroup>
                 <optgroup label="Active Seasons">{seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}</optgroup>
               </select>
+              {typeof adminTab === 'number' && (
+                // 🔥 [UX] 시즌 삭제 버튼 복구
+                <button onClick={handleDeleteSeason} className="w-full md:w-auto px-6 py-4 bg-red-900/50 border border-red-800 text-red-400 rounded-xl font-bold hover:bg-red-900 transition-colors whitespace-nowrap">
+                  🗑️ DELETE SEASON
+                </button>
+              )}
             </div>
+            
             {adminTab === 'OWNER' && (
               <div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4">
                 <h3 className="text-purple-400 font-bold">OWNER MANAGEMENT</h3>
@@ -618,8 +662,9 @@ export default function FootballLeagueApp() {
                   <button onClick={handleConfirmTeam} className="bg-blue-600 px-6 rounded font-bold">ASSIGN</button>
                 </div>
                 <div className="pt-6 border-t border-slate-800">
-                  <p className="text-[10px] text-slate-500 mb-4 font-bold">CURRENT ROSTER</p>
-                  <div className="flex flex-wrap gap-2">
+                  <p className="text-[10px] text-slate-500 mb-4 font-bold">CURRENT ROSTER ({(recordActiveS?.teams || []).length})</p>
+                  {/* 🔥 [UX] 스크롤 박스로 가독성 개선 */}
+                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">
                     {(recordActiveS?.teams || []).map(t => (
                       <span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2">
                         <img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" />
@@ -648,13 +693,19 @@ export default function FootballLeagueApp() {
                 <input value={manageSearch} onChange={e => setManageSearch(e.target.value)} placeholder="Search..." className="bg-slate-950 p-3 rounded border border-slate-700 text-xs" />
               </div>
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                {filteredTeams.map(mt => (
+                {/* 🔥 [UX] 더보기 기능 적용 */}
+                {filteredTeams.slice(0, visibleTeamCount).map(mt => (
                   <div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all">
                     <img src={mt.logo} alt="team" className="w-10 h-10 object-contain bg-white rounded-full p-1" />
                     <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
                   </div>
                 ))}
               </div>
+              {visibleTeamCount < filteredTeams.length && (
+                <button onClick={() => setVisibleTeamCount(prev => prev + 18)} className="w-full py-3 bg-slate-800 text-slate-400 font-bold text-xs rounded-xl hover:bg-slate-700 transition-colors">
+                  👇 LOAD MORE TEAMS ({filteredTeams.length - visibleTeamCount} remaining)
+                </button>
+              )}
             </div>
             
             <section ref={manualFormRef} className="p-8 rounded-3xl border bg-slate-900/60 border-slate-800">
@@ -677,7 +728,7 @@ export default function FootballLeagueApp() {
           </div>
         )}
 
-        {/* Modal: Match Edit (레이아웃 수정됨) */}
+        {/* Modal: Match Edit */}
         {editingMatch && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-4xl space-y-6 my-auto">
