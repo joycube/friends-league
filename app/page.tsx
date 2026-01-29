@@ -302,7 +302,6 @@ export default function FootballLeagueApp() {
       
       {/* Banner */}
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl">
-        {/* 🔥 [Fix] alt 속성 추가하여 빌드 에러 해결 */}
         <img src="https://www.konami.com/efootball/s/img/main_page_1.png?v=903" alt="banner" className="w-full h-full object-cover opacity-80" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
@@ -342,7 +341,6 @@ export default function FootballLeagueApp() {
                     {activeRankingData.teams.map((t, i) => (
                       <tr key={t.id} className="border-b border-slate-800/50 hover:bg-white/5 font-sans not-italic">
                         <td className="p-4 font-bold">{i+1}</td>
-                        {/* 🔥 [Fix] alt 속성 추가 */}
                         <td className="p-4 flex items-center gap-2"><img src={t.logo} alt="team" className="w-6 h-6 object-contain bg-white rounded-full p-0.5" />{t.name}</td>
                         <td className="p-4 text-slate-400">{t.ownerName}</td>
                         <td className="p-4 text-center">{t.win}-{t.draw}-{t.loss}</td>
@@ -428,14 +426,12 @@ export default function FootballLeagueApp() {
                     <div key={m.id} onClick={() => handleMatchClick(m)} className="bg-slate-950 p-6 rounded-xl border border-slate-800 flex flex-col gap-4 cursor-pointer hover:border-blue-500 hover:bg-slate-900/80 transition-all">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-4 w-5/12">
-                          {/* 🔥 [Fix] alt 속성 추가 */}
                           <img src={m.homeLogo} alt="home" className="w-10 h-10 bg-white rounded-full p-1"/>
                           <div className="flex flex-col"><span className="text-base font-bold text-white">{m.home}</span><span className="text-xs text-slate-500 font-sans not-italic">{m.homeOwner}</span></div>
                         </div>
                         <div className="flex flex-col items-center w-2/12"><span className={`text-2xl font-black ${m.status==='FINISHED'?'text-white':'text-slate-600'}`}>{m.status==='FINISHED'?`${m.homeScore} : ${m.awayScore}`:'VS'}</span></div>
                         <div className="flex items-center gap-4 w-5/12 justify-end">
                           <div className="flex flex-col items-end"><span className="text-base font-bold text-white">{m.away}</span><span className="text-xs text-slate-500 font-sans not-italic">{m.awayOwner}</span></div>
-                          {/* 🔥 [Fix] alt 속성 추가 */}
                           <img src={m.awayLogo} alt="away" className="w-10 h-10 bg-white rounded-full p-1"/>
                         </div>
                       </div>
@@ -549,7 +545,6 @@ export default function FootballLeagueApp() {
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 {filteredTeams.map(mt => (
                   <div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all">
-                    {/* 🔥 [Fix] alt 속성 추가 */}
                     <img src={mt.logo} alt="team" className="w-10 h-10 object-contain bg-white rounded-full p-1" />
                     <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
                   </div>
@@ -583,10 +578,8 @@ export default function FootballLeagueApp() {
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-2xl space-y-6">
               <div className="flex justify-between items-center border-b border-slate-800 pb-4"><h3 className="text-xl font-bold">MATCH RESULT</h3><button onClick={() => setEditingMatch(null)}>✕</button></div>
               <div className="flex justify-center items-center gap-8">
-                {/* 🔥 [Fix] alt 속성 추가 */}
                 <div className="text-center"><img src={editingMatch.homeLogo} alt="home" className="w-12 h-12 bg-white rounded-full p-2 mx-auto"/><p className="font-bold mt-2">{editingMatch.home}</p></div>
                 <div className="flex gap-4 items-center"><input type="number" value={matchInputs.homeScore} onChange={e=>setMatchInputs({...matchInputs,homeScore:e.target.value})} className="w-16 h-16 text-3xl text-center bg-slate-950 rounded border border-slate-700"/><span className="text-xl">-</span><input type="number" value={matchInputs.awayScore} onChange={e=>setMatchInputs({...matchInputs,awayScore:e.target.value})} className="w-16 h-16 text-3xl text-center bg-slate-950 rounded border border-slate-700"/></div>
-                {/* 🔥 [Fix] alt 속성 추가 */}
                 <div className="text-center"><img src={editingMatch.awayLogo} alt="away" className="w-12 h-12 bg-white rounded-full p-2 mx-auto"/><p className="font-bold mt-2">{editingMatch.away}</p></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
