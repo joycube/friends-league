@@ -51,10 +51,10 @@ const RecordInput = ({ type, inputValue, onInputChange, onAdd, onRemove, records
 };
 
 export default function FootballLeagueApp() {
-  const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'ADMIN' | 'TEAMS' | 'TUTORIAL'>('RANKING');
+  const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'ADMIN' | 'TUTORIAL'>('RANKING');
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
   const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('TEAMS');
-  const [adminTab, setAdminTab] = useState<number | 'NEW' | 'OWNER' | 'BANNER'>(0);
+  const [adminTab, setAdminTab] = useState<number | 'NEW' | 'OWNER' | 'BANNER' | 'TEAMS'>('NEW');
   
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
   const [statView, setStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
@@ -120,7 +120,7 @@ export default function FootballLeagueApp() {
     return () => clearInterval(timer);
   }, []);
 
-  // Banner Rolling
+  // 🔥 [Updated] Banner Rolling Logic (Video Priority -> Random Image)
   useEffect(() => {
     if (banners.length <= 1) return;
     const interval = setInterval(() => {
@@ -157,23 +157,24 @@ export default function FootballLeagueApp() {
       const d = s.docs.map(doc => doc.data() as Season); 
       setSeasons(d);
       
-      // 🔥 [Fix] Auto-switch to 'NEW' if no seasons exist
       if(d.length > 0) {
         if(viewSeasonId === 0) {
           setViewSeasonId(d[0].id);
-          setAdminTab(d[0].id);
+          // If in Admin view but looking at a season, keep it, otherwise set to New.
+          if(typeof adminTab === 'number') setAdminTab(d[0].id);
         }
       } else {
+        // 🔥 [Fix] If no games, default to NEW
         setAdminTab('NEW');
         setViewSeasonId(0);
       }
     });
-    // 🔥 [Fix] Random Banner Order
+    // 🔥 [Updated] Banner Fetch: Youtube First, Then Random Images
     const u4 = onSnapshot(collection(db, "banners"), s => {
       const rawBanners = s.docs.map(d => ({id:d.id, ...d.data()} as Banner));
-      // Shuffle banners
-      const shuffled = rawBanners.sort(() => Math.random() - 0.5);
-      setBanners(shuffled);
+      const videos = rawBanners.filter(b => b.url.includes('youtube') || b.url.includes('youtu.be'));
+      const images = rawBanners.filter(b => !b.url.includes('youtube') && !b.url.includes('youtu.be')).sort(() => Math.random() - 0.5);
+      setBanners([...videos, ...images]);
     });
     return () => { u1(); u2(); u3(); u4(); };
   }, []);
@@ -293,8 +294,6 @@ export default function FootballLeagueApp() {
     await setDoc(doc(db, "seasons", String(id)), { id, name: inputSeasonName, type: inputSeasonType, leagueMode: inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive: true, teams: [], rounds: [], prizes: { total: inputTotalPrize, ...prizes } });
     setAdminTab(id); setViewSeasonId(id); setInputSeasonName('');
   };
-  
-  // 🔥 [Fix] Delete Season UX: Go to 'NEW' tab
   const handleDeleteSeason = async () => {
     if(typeof adminTab !== 'number') return;
     if(confirm("⚠️ 삭제하시겠습니까?")) { 
@@ -561,7 +560,7 @@ export default function FootballLeagueApp() {
     } catch(e) { console.error(e); alert("실패"); } 
   };
 
-  // 🔥 [New] Banner Handlers
+  // Banner Handlers
   const handleSaveBanner = async () => {
     if(!bannerTitle || !bannerUrl) return alert("제목과 URL을 입력하세요");
     await addDoc(collection(db, "banners"), { title: bannerTitle, url: bannerUrl, order: Date.now() });
@@ -570,29 +569,43 @@ export default function FootballLeagueApp() {
   const handleDeleteBanner = async (id: string) => {
     if(confirm("배너를 삭제하시겠습니까?")) await deleteDoc(doc(db, "banners", id));
   };
+  const getBannerContent = (b: Banner) => {
+    if(b.url.includes('youtube') || b.url.includes('youtu.be')) {
+      const vId = b.url.includes('youtu.be') ? b.url.split('/').pop() : b.url.split('v=')[1]?.split('&')[0];
+      return <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${vId}`} frameBorder="0" allow="autoplay; encrypted-media"></iframe>;
+    }
+    return <img src={b.url} alt={b.title} className="w-full h-full object-cover opacity-80" />;
+  };
 
   const handleDeleteMasterTeam = async (id: string) => { if(confirm("팀을 삭제하시겠습니까?")) { await deleteDoc(doc(db, "master_teams", id)); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); } };
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{name:i.name,logo:i.logo||'',category:i.category||'CLUB',region:i.region||'',tier:i.tier||'A'}); setBulkInput(''); alert("완료"); } catch { alert("JSON 오류"); } };
   const handleInitCreateTeam = () => { setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); };
   
+  // 🔥 [Fix] Admin Password Check
+  const handleAdminAccess = () => {
+    const pw = prompt("관리자 비밀번호를 입력하세요");
+    if(pw === '#5093') setCurrentView('ADMIN');
+    else alert("비밀번호가 일치하지 않습니다.");
+  };
+
   const filteredTeams = masterTeams.filter(t => (manageTab==='ALL'||t.category===manageTab) && (manageTier==='ALL'||t.tier===manageTier) && (manageRegion==='ALL'||t.region===manageRegion) && t.name.toLowerCase().includes(manageSearch.toLowerCase()));
   const allManageRegions = Array.from(new Set((manageTab==='ALL'?masterTeams:masterTeams.filter(t=>t.category===manageTab)).map(t=>t.region))).sort();
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       
-      {/* 🔥 [Updated] Rolling Banner */}
+      {/* Banner */}
       <div 
-        className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden"
+        className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         {banners.length > 0 ? (
           banners.map((b, i) => (
-            <div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i === bannerIdx ? 'opacity-100' : 'opacity-0'}`}>
-              <img src={b.url} alt={b.title} className="w-full h-full object-cover opacity-80" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
+            <div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i === bannerIdx ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
+              {getBannerContent(b)}
+              <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div>
             </div>
           ))
         ) : (
@@ -602,18 +615,16 @@ export default function FootballLeagueApp() {
           </div>
         )}
         
-        <div className="absolute bottom-6 left-6 uppercase z-10">
-          {/* 🔥 [Updated] Banner Text Size */}
-          <h1 className="text-2xl md:text-4xl text-white font-black italic">eFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_39</p>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
+          <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_40</p>
           <div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50">
             <span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span>
           </div>
         </div>
 
-        {/* Indicators */}
         {banners.length > 1 && (
-          <div className="absolute bottom-4 right-4 flex gap-2 z-10">
+          <div className="absolute bottom-4 right-4 flex gap-2 z-20">
             {banners.map((_, i) => (
               <div key={i} className={`w-2 h-2 rounded-full ${i === bannerIdx ? 'bg-white' : 'bg-slate-600'}`} />
             ))}
@@ -621,11 +632,13 @@ export default function FootballLeagueApp() {
         )}
       </div>
 
-      {/* Main Navigation (Tutorial Moved to End) */}
+      {/* Main Navigation - Simplified */}
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
-        {[{id:'RANKING',l:'🏆 RANKING'}, {id:'SCHEDULE',l:'📅 SCHEDULE'}, {id:'HISTORY',l:'📜 ALL TIME'}, {id:'ADMIN',l:'⚙️ ADMIN'}, {id:'TEAMS',l:'🛡️ TEAMS'}, {id:'TUTORIAL',l:'📘 TUTORIAL'}].map(tab => (
+        {[{id:'RANKING',l:'🏆 RANKING'}, {id:'SCHEDULE',l:'📅 SCHEDULE'}, {id:'HISTORY',l:'📜 ALL TIME'}, {id:'TUTORIAL',l:'📘 TUTORIAL'}].map(tab => (
           <button key={tab.id} onClick={() => setCurrentView(tab.id as any)} className={`px-6 py-3 rounded-xl border text-xs transition-all shadow-lg ${currentView === tab.id ? 'bg-blue-600 border-blue-400 text-white scale-105' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>{tab.l}</button>
         ))}
+        {/* Admin Button with Lock */}
+        <button onClick={handleAdminAccess} className={`px-6 py-3 rounded-xl border text-xs transition-all shadow-lg ${currentView === 'ADMIN' ? 'bg-purple-600 border-purple-400 text-white scale-105' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>⚙️ ADMIN</button>
       </div>
 
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
@@ -644,9 +657,9 @@ export default function FootballLeagueApp() {
               </div>
             </div>
 
-            {/* 🔥 [UI Update] Standing Table Optimized for Mobile */}
+            {/* 🔥 [UI Update] Rounded-xl for Tables */}
             {rankingTab === 'STANDINGS' && (
-              <div className="bg-[#0f172a] rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
+              <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
                   <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
                     <tr>
@@ -687,8 +700,8 @@ export default function FootballLeagueApp() {
                 </table>
               </div>
             )}
-            {rankingTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-3xl border border-purple-500/20 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-purple-400"><tr><th className="p-4">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center">Pts</th><th className="p-4 text-right">Prize</th></tr></thead><tbody>{activeRankingData.owners.filter(o => o.win > 0 || o.points > 0 || o.currentPrize > 0).map((t, i) => (<tr key={t.id} className="border-b border-slate-800/50 hover:bg-white/5 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.ownerName}</td><td className="p-4 text-center">{t.win}-{t.draw}-{t.loss}</td><td className="p-4 text-center font-bold text-yellow-500">{t.points}</td><td className="p-4 text-right text-emerald-400">{t.currentPrize>0?`₩${t.currentPrize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
-            {rankingTab === 'PLAYERS' && (<div className="space-y-4"><div className="flex justify-center gap-2"><button onClick={() => setStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${statView==='GOAL'?'bg-emerald-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button><button onClick={() => setStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${statView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button></div><div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-slate-500"><tr><th className="p-4">#</th><th className="p-4">Player</th><th className="p-4">Owner</th><th className="p-4 text-center">Count</th></tr></thead><tbody>{activeRankingData.players.filter(p => (statView==='GOAL' ? p.goals>0 : p.assists>0)).sort((a,b) => statView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 20).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-slate-500 text-[10px]">{p.owner}</td><td className={`p-4 text-center font-bold text-lg ${statView==='GOAL'?'text-emerald-400':'text-blue-400'}`}>{statView==='GOAL'?p.goals:p.assists}</td></tr>))}</tbody></table></div></div>)}
+            {rankingTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-xl border border-purple-500/20 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-purple-400"><tr><th className="p-4">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Record</th><th className="p-4 text-center">Pts</th><th className="p-4 text-right">Prize</th></tr></thead><tbody>{activeRankingData.owners.filter(o => o.win > 0 || o.points > 0 || o.currentPrize > 0).map((t, i) => (<tr key={t.id} className="border-b border-slate-800/50 hover:bg-white/5 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.ownerName}</td><td className="p-4 text-center">{t.win}-{t.draw}-{t.loss}</td><td className="p-4 text-center font-bold text-yellow-500">{t.points}</td><td className="p-4 text-right text-emerald-400">{t.currentPrize>0?`₩${t.currentPrize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
+            {rankingTab === 'PLAYERS' && (<div className="space-y-4"><div className="flex justify-center gap-2"><button onClick={() => setStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${statView==='GOAL'?'bg-emerald-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button><button onClick={() => setStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${statView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button></div><div className="bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-slate-500"><tr><th className="p-4">#</th><th className="p-4">Player</th><th className="p-4">Owner</th><th className="p-4 text-center">Count</th></tr></thead><tbody>{activeRankingData.players.filter(p => (statView==='GOAL' ? p.goals>0 : p.assists>0)).sort((a,b) => statView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 20).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-slate-500 text-[10px]">{p.owner}</td><td className={`p-4 text-center font-bold text-lg ${statView==='GOAL'?'text-emerald-400':'text-blue-400'}`}>{statView==='GOAL'?p.goals:p.assists}</td></tr>))}</tbody></table></div></div>)}
             {rankingTab === 'HIGHLIGHTS' && (<div className="grid grid-cols-1 md:grid-cols-3 gap-4">{activeRankingData.highlights.map((m, i) => { const hScore = Number(m.homeScore); const aScore = Number(m.awayScore); const winnerLogo = hScore > aScore ? m.homeLogo : (aScore > hScore ? m.awayLogo : null); return (<div key={i} className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-slate-600 transition-all group"><div className="aspect-video bg-black relative"><iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${m.youtubeUrl.split('v=')[1]||m.youtubeUrl.split('/').pop()}`} frameBorder="0" allowFullScreen></iframe></div><div className="p-3 flex items-center justify-between bg-slate-950"><div className="flex items-center gap-3">{winnerLogo ? <img src={winnerLogo} alt="winner" className="w-8 h-8 object-contain" /> : <div className="flex -space-x-2"><img src={m.homeLogo} alt="home" className="w-6 h-6 object-contain rounded-full bg-white p-0.5" /><img src={m.awayLogo} alt="away" className="w-6 h-6 object-contain rounded-full bg-white p-0.5" /></div>}<div className="flex flex-col"><span className="text-white font-bold text-sm tracking-tight">{m.home} vs {m.away}</span><span className="text-emerald-400 text-xs font-bold">{m.homeScore} : {m.awayScore}</span></div></div></div></div>); })}</div>)}
           </div>
         )}
@@ -751,9 +764,8 @@ export default function FootballLeagueApp() {
                 <button key={sub} onClick={() => setHistoryTab(sub as any)} className={`px-6 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-colors ${historyTab === sub ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{sub}</button>
               ))}
             </div>
-            {/* 🔥 [Fix] All Time Teams: Season Removed */}
             {historyTab === 'TEAMS' && (
-              <div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden">
+              <div className="bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden">
                 <table className="w-full text-left text-xs uppercase">
                   <thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Team</th><th className="p-4 text-center">W-D-L</th><th className="p-4 text-center">PTS</th></tr></thead>
                   <tbody>
@@ -775,121 +787,73 @@ export default function FootballLeagueApp() {
                 </table>
               </div>
             )}
-            {historyTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Record</th><th className="p-4 text-center">Total PTS</th><th className="p-4 text-right">Accumulated Prize</th></tr></thead><tbody>{historyData.owners.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.name}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td><td className="p-4 text-right text-emerald-400">{t.prize>0?`₩${t.prize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
-            {historyTab === 'PLAYERS' && (<div className="space-y-4"><div className="flex justify-center gap-2"><button onClick={() => setHistoryStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='GOAL'?'bg-orange-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button><button onClick={() => setHistoryStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button></div><div className="bg-slate-900/40 rounded-3xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Count</th></tr></thead><tbody>{historyData.players.filter(p => (historyStatView==='GOAL'?p.goals>0:p.assists>0)).sort((a,b) => historyStatView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 30).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-center text-emerald-400 font-bold">{p.goals}</td><td className="p-4 text-center text-blue-400 font-bold">{p.assists}</td></tr>))}</tbody></table></div></div>)}
+            {historyTab === 'OWNERS' && (<div className="bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Record</th><th className="p-4 text-center">Total PTS</th><th className="p-4 text-right">Accumulated Prize</th></tr></thead><tbody>{historyData.owners.sort((a,b) => b.pts - a.pts).map((t, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{t.name}</td><td className="p-4 text-center">{t.w}-{t.d}-{t.l}</td><td className="p-4 text-center font-bold text-orange-500">{t.pts}</td><td className="p-4 text-right text-emerald-400">{t.prize>0?`₩${t.prize.toLocaleString()}`:'-'}</td></tr>))}</tbody></table></div>)}
+            {historyTab === 'PLAYERS' && (<div className="space-y-4"><div className="flex justify-center gap-2"><button onClick={() => setHistoryStatView('GOAL')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='GOAL'?'bg-orange-600':'bg-slate-800 text-slate-500'}`}>⚽ GOALS</button><button onClick={() => setHistoryStatView('ASSIST')} className={`px-4 py-1 rounded-full text-xs font-bold ${historyStatView==='ASSIST'?'bg-blue-600':'bg-slate-800 text-slate-500'}`}>👟 ASSISTS</button></div><div className="bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden"><table className="w-full text-left text-xs uppercase"><thead className="bg-slate-950/80 text-orange-400"><tr><th className="p-4">Rank</th><th className="p-4">Player</th><th className="p-4">Owner</th><th className="p-4 text-center">Total Count</th></tr></thead><tbody>{historyData.players.filter(p => (historyStatView==='GOAL'?p.goals>0:p.assists>0)).sort((a,b) => historyStatView==='GOAL' ? b.goals-a.goals : b.assists-a.assists).slice(0, 30).map((p, i) => (<tr key={i} className="border-b border-slate-800/50 font-sans not-italic"><td className="p-4">{i+1}</td><td className="p-4 font-bold text-white">{p.name}</td><td className="p-4 text-center text-emerald-400 font-bold">{p.goals}</td><td className="p-4 text-center text-blue-400 font-bold">{p.assists}</td></tr>))}</tbody></table></div></div>)}
           </div>
         )}
 
-        {/* 🔥 [New View] TUTORIAL */}
+        {/* ================= VIEW: TUTORIAL ================= */}
         {currentView === 'TUTORIAL' && (
           <div className="animate-in fade-in space-y-8">
             <h2 className="text-3xl font-black italic text-center mb-8 text-blue-400">LEAGUE GUIDEBOOK</h2>
-            
-            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">👤 1. 오너(참가자) 등록</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                가장 먼저 리그에 참여할 오너를 등록해야 합니다.<br/>
-                <b>[⚙️ ADMIN] &gt; [👤 오너 만들기]</b> 메뉴에서 닉네임과 프로필 이미지 URL을 입력하여 등록하세요.<br/>
-                (이미지는 URL 주소만 입력하면 자동으로 표시됩니다.)
-              </p>
-            </div>
-
-            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">🛡️ 2. 팀 생성 및 관리</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                오너들이 사용할 팀을 데이터베이스에 등록합니다.<br/>
-                <b>[🛡️ TEAMS]</b> 메뉴에서 <b>[➕ 새로운 팀 등록하기]</b> 버튼을 눌러 팀을 생성하세요.<br/>
-                클럽/국가대표 여부, 등급(Tier), 지역 등을 상세하게 설정할 수 있습니다.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">🏆 3. 게임(시즌) 생성</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                새로운 리그나 토너먼트를 시작해봅시다.<br/>
-                <b>[⚙️ ADMIN] &gt; [➕ 새로운 게임 만들기]</b>에서 시즌 이름과 방식을 선택하세요.<br/>
-                <b>리그 모드:</b> 풀리그(Single) 또는 홈&어웨이(Double) 방식 지원.<br/>
-                <b>토너먼트 모드:</b> 대진표 자동 생성 및 결승전까지 자동 진행.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">🎲 4. 팀 배정 및 스케줄 생성</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                생성된 시즌을 선택한 후 <b>[팀 배정]</b> 메뉴에서 오너에게 팀을 할당합니다.<br/>
-                랜덤 뽑기(🎲) 버튼을 활용하면 공정하게 팀을 배정할 수 있습니다.<br/>
-                모든 배정이 끝나면 <b>[📅 스케줄 만들기]</b> 버튼을 누르세요. 자동으로 대진표가 완성됩니다.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">📝 5. 경기 결과 입력</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                <b>[📅 SCHEDULE]</b> 메뉴에서 진행된 경기를 클릭하세요.<br/>
-                스코어와 득점 선수, 어시스트 선수를 입력하고 저장하면<br/>
-                <b>[🏆 RANKING]</b>과 <b>[📜 ALL TIME]</b>에 실시간으로 반영됩니다.
-              </p>
-            </div>
+            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xl font-bold text-white flex items-center gap-2">👤 1. 오너(참가자) 등록</h3><p className="text-slate-400 text-sm leading-relaxed"><b>[⚙️ ADMIN]</b> 메뉴 진입(비밀번호 필요) &gt; <b>[👤 오너 만들기]</b>에서 참가자를 등록하세요.</p></div>
+            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xl font-bold text-white flex items-center gap-2">🛡️ 2. 팀 관리</h3><p className="text-slate-400 text-sm leading-relaxed"><b>[⚙️ ADMIN] &gt; [🛡️ 팀 관리]</b>에서 사용할 팀들을 미리 등록하세요.<br/>[새로운 팀 등록하기] 버튼을 눌러 팀을 추가할 수 있습니다.</p></div>
+            <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xl font-bold text-white flex items-center gap-2">🏆 3. 게임 생성 및 배정</h3><p className="text-slate-400 text-sm leading-relaxed"><b>[⚙️ ADMIN] &gt; [➕ 새로운 게임 만들기]</b>에서 시즌을 생성하고,<br/>팀 배정 메뉴에서 오너에게 팀을 할당한 뒤 스케줄을 생성하세요.</p></div>
           </div>
         )}
 
-        {/* ================= VIEW: ADMIN & TEAMS ================= */}
-        {(currentView === 'ADMIN' || currentView === 'TEAMS') && (
+        {/* ================= VIEW: ADMIN ================= */}
+        {currentView === 'ADMIN' && (
           <div className="animate-in fade-in space-y-10">
-            {currentView === 'ADMIN' ? (
-              <>
-              <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 flex flex-col md:flex-row gap-4 items-center">
-                <select value={adminTab} onChange={(e) => setAdminTab(e.target.value === 'NEW' || e.target.value === 'OWNER' || e.target.value === 'BANNER' ? e.target.value : Number(e.target.value))} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm font-sans not-italic">
-                  <optgroup label="Core Options">
-                    <option value="NEW">➕ 새로운 게임 만들기</option>
-                    <option value="OWNER">👤 오너 만들기</option>
-                    <option value="BANNER">🖼️ 배너 관리</option>
-                  </optgroup>
-                  <optgroup label="Active Seasons">{seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}</optgroup>
-                </select>
-                {typeof adminTab === 'number' && <button onClick={handleDeleteSeason} className="w-full md:w-auto px-6 py-4 bg-red-900/50 border border-red-800 text-red-400 rounded-xl font-bold hover:bg-red-900 transition-colors whitespace-nowrap">🗑️ 게임 삭제하기</button>}
-              </div>
-              
-              {/* Banner Manage */}
-              {adminTab === 'BANNER' && (
-                <div className="bg-slate-900/60 p-8 rounded-3xl border border-blue-500/30 space-y-4">
-                  <h3 className="text-blue-400 font-bold">배너 이미지 관리</h3>
-                  <div className="flex gap-4 flex-col md:flex-row">
-                    <input value={bannerTitle} onChange={e=>setBannerTitle(e.target.value)} placeholder="배너 제목" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/>
-                    <input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} placeholder="이미지 URL" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/>
-                    <button onClick={handleSaveBanner} className="bg-blue-600 px-6 py-3 rounded font-bold whitespace-nowrap">등록하기</button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                    {banners.map(b => (
-                      <div key={b.id} className="relative group rounded-xl overflow-hidden border border-slate-700 aspect-video">
-                        <img src={b.url} alt={b.title} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleDeleteBanner(b.id!)} className="bg-red-600 text-white px-4 py-2 rounded font-bold">삭제</button>
-                        </div>
-                        <span className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 text-xs rounded">{b.title}</span>
-                      </div>
-                    ))}
-                  </div>
+            <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 flex flex-col md:flex-row gap-4 items-center">
+              <select value={adminTab} onChange={(e) => setAdminTab(e.target.value === 'NEW' || e.target.value === 'OWNER' || e.target.value === 'BANNER' || e.target.value === 'TEAMS' ? e.target.value : Number(e.target.value))} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm font-sans not-italic">
+                <optgroup label="Core Options">
+                  <option value="NEW">➕ 새로운 게임 만들기</option>
+                  <option value="OWNER">👤 오너 만들기</option>
+                  <option value="BANNER">🖼️ 배너 관리</option>
+                  <option value="TEAMS">🛡️ 팀 관리</option>
+                </optgroup>
+                <optgroup label="Active Seasons">{seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}</optgroup>
+              </select>
+              {typeof adminTab === 'number' && <button onClick={handleDeleteSeason} className="w-full md:w-auto px-6 py-4 bg-red-900/50 border border-red-800 text-red-400 rounded-xl font-bold hover:bg-red-900 transition-colors whitespace-nowrap">🗑️ 게임 삭제하기</button>}
+            </div>
+            
+            {/* Banner Manage */}
+            {adminTab === 'BANNER' && (
+              <div className="bg-slate-900/60 p-8 rounded-3xl border border-blue-500/30 space-y-4">
+                <h3 className="text-blue-400 font-bold">배너 이미지/영상 관리</h3>
+                <div className="flex gap-4 flex-col md:flex-row">
+                  <input value={bannerTitle} onChange={e=>setBannerTitle(e.target.value)} placeholder="배너 제목" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/>
+                  <input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} placeholder="이미지 또는 유튜브 URL" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/>
+                  <button onClick={handleSaveBanner} className="bg-blue-600 px-6 py-3 rounded font-bold whitespace-nowrap">등록하기</button>
                 </div>
-              )}
-
-              {adminTab === 'OWNER' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4"><h3 className="text-purple-400 font-bold">오너 관리</h3><div className="flex gap-4 flex-col md:flex-row"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="닉네임" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="이미지 URL (선택사항)" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleSaveOwner} className={`px-6 py-3 rounded font-bold whitespace-nowrap ${editOwnerId ? 'bg-blue-600' : 'bg-purple-600'}`}>{editOwnerId ? 'UPDATE' : 'ADD'}</button>{editOwnerId && <button onClick={()=>{setEditOwnerId(null); setNewOwnerName(''); setNewOwnerPhoto('')}} className="bg-slate-700 px-6 rounded">CANCEL</button>}</div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">{owners.map(o => (<div key={o.id} onClick={() => handleEditOwnerClick(o)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center gap-4 relative group cursor-pointer hover:border-blue-500"><img src={o.photo} alt="owner" className="w-12 h-12 rounded-full border-2 border-slate-700" /><span className="text-sm truncate">{o.nickname}</span><button onClick={(e) => {e.stopPropagation(); if(confirm('삭제?')) deleteDoc(doc(db,"users",o.docId!));}} className="ml-auto text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button></div>))}</div></div>}
-              {adminTab === 'NEW' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="시즌 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>{inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}</div></div><div className="bg-slate-950 p-4 rounded-xl border border-slate-800"><p className="text-xs text-slate-500 mb-2">Total Prize Pool</p><input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-900 p-2 rounded w-full border border-slate-700 mb-2 text-white" /><div className="flex justify-between text-xs text-slate-400 gap-2 overflow-x-auto"><div className="flex flex-col"><label>1st</label><input value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>2nd</label><input value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>3rd</label><input value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>Scorer</label><input value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div></div></div><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-3 rounded font-bold">시즌 생성하기</button></div>}
-              {typeof adminTab === 'number' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-blue-500/30 space-y-6"><div className="flex justify-between items-center"><h3 className="text-blue-400 font-bold">팀 배정</h3></div><div className="grid grid-cols-1 md:grid-cols-5 gap-2 font-sans not-italic"><select value={selOwnerId} onChange={e => setSelOwnerId(Number(e.target.value))} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="">오너 선택</option>{owners.map(o=><option key={o.id} value={o.id}>{o.nickname}</option>)}</select><select value={selCategory} onChange={e => {setSelCategory(e.target.value as any); setSelRegion('ALL');}} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">전체</option><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select><select value={selTier} onChange={e => setSelTier(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">전체 등급</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}등급</option>)}</select><select value={selRegion} onChange={e => setSelRegion(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">리그/지역</option>{Array.from(new Set((selCategory==='ALL'?masterTeams:masterTeams.filter(m=>m.category===selCategory)).map(m=>m.region))).sort().map(r=><option key={r} value={r}>{r}</option>)}</select><button onClick={handleRandomDraw} className="bg-slate-800 border border-slate-600 rounded text-xs font-bold">🎲</button></div><div className="flex gap-2"><select value={selTeamName} onChange={e => setSelTeamName(e.target.value)} className="flex-1 bg-slate-950 p-3 rounded border border-blue-500 text-blue-400 font-bold font-sans not-italic"><option value="">팀 선택...</option>{stepTeams.map(mt => <option key={mt.id} value={mt.name}>{mt.name}</option>)}</select><button onClick={handleConfirmTeam} className="bg-blue-600 px-6 rounded font-bold">배정</button></div><div className="pt-6 border-t border-slate-800"><p className="text-[10px] text-slate-500 mb-4 font-bold">현재 배정된 팀 ({(recordActiveS?.teams || []).length})</p><div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">{(recordActiveS?.teams || []).map(t => (<span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" /><span className="text-white font-bold">{t.name}</span><span className="text-slate-500 text-[9px] uppercase">{t.tier} • {t.ownerName}</span><button onClick={() => handleRemoveTeamFromSeason(t.id)} className="ml-2 text-red-500 hover:text-red-300 font-bold">×</button></span>))}</div></div><div className="border-t border-slate-800 pt-6 mt-4"><button onClick={handleGenerateSchedule} className="w-full bg-slate-800 text-emerald-400 border border-emerald-900 py-3 rounded-xl text-sm font-bold hover:bg-emerald-900/20 transition-all">📅 스케쥴 만들기</button></div></div>}
-              </>
-            ) : (
-              <>
-              {/* 🔥 [New Feature] Add Team Button */}
-              <div className="flex justify-between items-center mb-4 px-2">
-                <h3 className="text-lg font-bold italic text-slate-400">TEAM MANAGEMENT</h3>
-                <button onClick={handleInitCreateTeam} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">➕ 새로운 팀 등록하기</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                  {banners.map(b => (
+                    <div key={b.id} className="relative group rounded-xl overflow-hidden border border-slate-700 aspect-video">
+                      {getBannerContent(b)}
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleDeleteBanner(b.id!)} className="bg-red-600 text-white px-4 py-2 rounded font-bold">삭제</button>
+                      </div>
+                      <span className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 text-xs rounded z-20">{b.title}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
 
+            {adminTab === 'OWNER' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4"><h3 className="text-purple-400 font-bold">오너 관리</h3><div className="flex gap-4 flex-col md:flex-row"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="닉네임" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="이미지 URL (선택사항)" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleSaveOwner} className={`px-6 py-3 rounded font-bold whitespace-nowrap ${editOwnerId ? 'bg-blue-600' : 'bg-purple-600'}`}>{editOwnerId ? 'UPDATE' : 'ADD'}</button>{editOwnerId && <button onClick={()=>{setEditOwnerId(null); setNewOwnerName(''); setNewOwnerPhoto('')}} className="bg-slate-700 px-6 rounded">CANCEL</button>}</div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">{owners.map(o => (<div key={o.id} onClick={() => handleEditOwnerClick(o)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center gap-4 relative group cursor-pointer hover:border-blue-500"><img src={o.photo} alt="owner" className="w-12 h-12 rounded-full border-2 border-slate-700" /><span className="text-sm truncate">{o.nickname}</span><button onClick={(e) => {e.stopPropagation(); if(confirm('삭제?')) deleteDoc(doc(db,"users",o.docId!));}} className="ml-auto text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button></div>))}</div></div>}
+            {adminTab === 'NEW' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="시즌 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>{inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}</div></div><div className="bg-slate-950 p-4 rounded-xl border border-slate-800"><p className="text-xs text-slate-500 mb-2">Total Prize Pool</p><input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-900 p-2 rounded w-full border border-slate-700 mb-2 text-white" /><div className="flex justify-between text-xs text-slate-400 gap-2 overflow-x-auto"><div className="flex flex-col"><label>1st</label><input value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>2nd</label><input value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>3rd</label><input value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>Scorer</label><input value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div></div></div><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-3 rounded font-bold">시즌 생성하기</button></div>}
+            
+            {/* Team Management (Moved inside Admin) */}
+            {adminTab === 'TEAMS' && (
+              <>
+              <div className="flex justify-between items-center mb-4 px-2"><h3 className="text-lg font-bold italic text-slate-400">TEAM MANAGEMENT</h3><button onClick={handleInitCreateTeam} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">➕ 새로운 팀 등록하기</button></div>
               <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 space-y-6"><div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-sans not-italic"><select value={manageTab} onChange={e => setManageTab(e.target.value as any)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">전체 팀 보기</option><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select><select value={manageTier} onChange={e => setManageTier(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">전체 등급</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}등급</option>)}</select><select value={manageRegion} onChange={e => setManageRegion(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs"><option value="ALL">리그/지역</option>{allManageRegions.map(r=><option key={r} value={r}>{r}</option>)}</select><input value={manageSearch} onChange={e => setManageSearch(e.target.value)} placeholder="팀을 검색해보세요" className="bg-slate-950 p-3 rounded border border-slate-700 text-xs" /></div><div className="grid grid-cols-2 md:grid-cols-6 gap-4">{filteredTeams.slice(0, visibleTeamCount).map(mt => (<div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all relative group"><img src={mt.logo} alt="team" className="w-10 h-10 object-contain bg-white rounded-full p-1" /><p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p><button onClick={(e) => {e.stopPropagation(); handleDeleteMasterTeam(mt.id!);}} className="absolute top-2 right-2 text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button></div>))}</div>{visibleTeamCount < filteredTeams.length && (<button onClick={() => setVisibleTeamCount(prev => prev + 18)} className="w-full py-3 bg-slate-800 text-slate-400 font-bold text-xs rounded-xl hover:bg-slate-700 transition-colors">👇 더 많은 팀 보기</button>)}</div>
-              
               <section ref={manualFormRef} className="p-8 rounded-3xl border bg-slate-900/60 border-slate-800"><h3 className="text-xl mb-4 font-bold">{editTeamId ? '팀 수정하기' : '새로운 팀 등록'}</h3><div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans not-italic mb-4"><select value={manualTeam.category} onChange={e => setManualTeam({...manualTeam, category: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select><select value={manualTeam.tier} onChange={e => setManualTeam({...manualTeam, tier: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="S">S등급</option><option value="A">A등급</option><option value="B">B등급</option><option value="C">C등급</option></select><input value={manualTeam.region} onChange={e => setManualTeam({...manualTeam, region: e.target.value})} placeholder="지역 / 리그" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /><input value={manualTeam.name} onChange={e => setManualTeam({...manualTeam, name: e.target.value})} placeholder="팀 이름" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /><input value={manualTeam.logo} onChange={e => setManualTeam({...manualTeam, logo: e.target.value})} placeholder="로고 URL" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" /></div><button onClick={handleSaveMaster} className="w-full bg-emerald-600 py-3 rounded font-bold">{editTeamId ? '수정 저장하기' : '등록하기'}</button></section><section className="bg-slate-900/60 p-8 rounded-3xl border border-orange-500/30"><h3 className="text-orange-400 font-bold mb-4">한번에 등록하기</h3><textarea value={bulkInput} onChange={e => setBulkInput(e.target.value)} className="w-full h-24 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs mb-4" /><button onClick={handleBulk} className="w-full bg-orange-600 py-3 rounded font-bold">등록하기</button></section>
               </>
             )}
+
+            {typeof adminTab === 'number' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-blue-500/30 space-y-6"><div className="flex justify-between items-center"><h3 className="text-blue-400 font-bold">팀 배정</h3></div><div className="grid grid-cols-1 md:grid-cols-5 gap-2 font-sans not-italic"><select value={selOwnerId} onChange={e => setSelOwnerId(Number(e.target.value))} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="">오너 선택</option>{owners.map(o=><option key={o.id} value={o.id}>{o.nickname}</option>)}</select><select value={selCategory} onChange={e => {setSelCategory(e.target.value as any); setSelRegion('ALL');}} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">전체</option><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select><select value={selTier} onChange={e => setSelTier(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">전체 등급</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}등급</option>)}</select><select value={selRegion} onChange={e => setSelRegion(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-xs text-white"><option value="ALL">리그/지역</option>{Array.from(new Set((selCategory==='ALL'?masterTeams:masterTeams.filter(m=>m.category===selCategory)).map(m=>m.region))).sort().map(r=><option key={r} value={r}>{r}</option>)}</select><button onClick={handleRandomDraw} className="bg-slate-800 border border-slate-600 rounded text-xs font-bold">🎲</button></div><div className="flex gap-2"><select value={selTeamName} onChange={e => setSelTeamName(e.target.value)} className="flex-1 bg-slate-950 p-3 rounded border border-blue-500 text-blue-400 font-bold font-sans not-italic"><option value="">팀 선택...</option>{stepTeams.map(mt => <option key={mt.id} value={mt.name}>{mt.name}</option>)}</select><button onClick={handleConfirmTeam} className="bg-blue-600 px-6 rounded font-bold">배정</button></div><div className="pt-6 border-t border-slate-800"><p className="text-[10px] text-slate-500 mb-4 font-bold">현재 배정된 팀 ({(recordActiveS?.teams || []).length})</p><div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">{(recordActiveS?.teams || []).map(t => (<span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2"><img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" /><span className="text-white font-bold">{t.name}</span><span className="text-slate-500 text-[9px] uppercase">{t.tier} • {t.ownerName}</span><button onClick={() => handleRemoveTeamFromSeason(t.id)} className="ml-2 text-red-500 hover:text-red-300 font-bold">×</button></span>))}</div></div><div className="border-t border-slate-800 pt-6 mt-4"><button onClick={handleGenerateSchedule} className="w-full bg-slate-800 text-emerald-400 border border-emerald-900 py-3 rounded-xl text-sm font-bold hover:bg-emerald-900/20 transition-all">📅 스케쥴 만들기</button></div></div>}
           </div>
         )}
 
@@ -942,7 +906,6 @@ export default function FootballLeagueApp() {
 
       </main>
 
-      {/* 🔥 [New Feature] Footer */}
       <footer className="bg-slate-950 py-10 mt-12 border-t border-slate-900">
         <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
