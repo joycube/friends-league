@@ -58,6 +58,7 @@ export default function FootballLeagueApp() {
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
   const [statView, setStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
   const [historyStatView, setHistoryStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
+  const [currentTime, setCurrentTime] = useState<string>(''); // 🔥 [New] Clock State
 
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -92,6 +93,24 @@ export default function FootballLeagueApp() {
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [matchInputs, setMatchInputs] = useState({ homeScore:'', awayScore:'', youtube:'' });
   const [recordInputs, setRecordInputs] = useState({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
+
+  // 🔥 [New] Real-time Clock Effect
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      // YYYY.MM.DD HH:mm:ss format
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      setCurrentTime(`${year}.${month}.${day} ${hours}:${minutes}:${seconds}`);
+    };
+    updateTime(); // Initial call
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => { 
     setPrizes({ first: Math.floor(inputTotalPrize*0.5), second: Math.floor(inputTotalPrize*0.3), third: Math.floor(inputTotalPrize*0.1), scorer: Math.floor(inputTotalPrize*0.1) }); 
@@ -251,7 +270,6 @@ export default function FootballLeagueApp() {
     }
   };
 
-  // 🔥 [New Feature] Remove Team From Season
   const handleRemoveTeamFromSeason = async (teamId: number) => {
     if(!recordActiveS) return;
     if(confirm("이 시즌에서 팀을 삭제하시겠습니까?\n(이미 진행된 경기 기록에 영향을 줄 수 있습니다.)")) {
@@ -503,8 +521,11 @@ export default function FootballLeagueApp() {
         <img src="https://www.konami.com/efootball/s/img/main_page_1.png?v=903" alt="banner" className="w-full h-full object-cover opacity-80" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
         <div className="absolute bottom-6 left-6 uppercase">
-          <h1 className="text-4xl md:text-6xl text-white font-black italic">eFOOTBALL LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">League Master P_36</p>
+          <h1 className="text-4xl md:text-5xl text-white font-black italic">eFOOTBALL SUPER LEAGUE™</h1>
+          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">ver. League Master P_37</p>
+          <div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50">
+            <span className="text-emerald-300 font-mono text-xs tracking-widest">{currentTime}</span>
+          </div>
         </div>
       </div>
 
@@ -617,8 +638,9 @@ export default function FootballLeagueApp() {
                       </div>
                       {m.status === 'FINISHED' && (
                         <div className="border-t border-slate-800 pt-3 flex flex-col gap-2 font-sans not-italic">
-                          {(m.homeScorers||[]).map((s, i) => <div key={`h${i}`} className="text-xs text-left text-blue-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.home})</span></div>)}
-                          {(m.awayScorers||[]).map((s, i) => <div key={`a${i}`} className="text-xs text-right text-red-300">⚽ {s.name} {s.count>1&&`(${s.count})`} <span className="text-[10px] text-slate-500">({m.away})</span></div>)}
+                          {/* 🔥 [Fix] Remove Team Name in Scorer List */}
+                          {(m.homeScorers||[]).map((s, i) => <div key={`h${i}`} className="text-xs text-left text-blue-300">⚽ {s.name} {s.count>1&&`(${s.count})`}</div>)}
+                          {(m.awayScorers||[]).map((s, i) => <div key={`a${i}`} className="text-xs text-right text-red-300">⚽ {s.name} {s.count>1&&`(${s.count})`}</div>)}
                         </div>
                       )}
                       {m.youtubeUrl && <a href={m.youtubeUrl} target="_blank" onClick={e=>e.stopPropagation()} className="block text-center text-xs text-red-400 hover:underline mt-2">▶ Watch Highlight</a>}
@@ -747,6 +769,22 @@ export default function FootballLeagueApp() {
         )}
 
       </main>
+
+      {/* 🔥 [New Feature] Footer */}
+      <footer className="bg-slate-950 py-10 mt-12 border-t border-slate-900">
+        <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <h4 className="text-white font-bold text-lg mb-2">eFOOTBALL SUPER LEAGUE</h4>
+            <p className="text-slate-500 text-sm">본 리그는 KONAMI eFOOTBALL로 진행 됩니다.<br/>대회 참가문의: joycube@gmail.com</p>
+            <p className="text-slate-600 text-xs mt-4">© 2026 eFOOTBALL SUPER LEAGUE. All rights reserved.</p>
+          </div>
+          <div className="flex flex-col gap-2 md:items-end">
+            <a href="https://www.konami.com/efootball/ko/" target="_blank" className="text-slate-400 hover:text-emerald-400 text-sm transition-colors">eFOOTBALL 공식 홈페이지</a>
+            <a href="https://www.konami.com/games/" target="_blank" className="text-slate-400 hover:text-emerald-400 text-sm transition-colors">KONAMI</a>
+            <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" className="text-slate-400 hover:text-red-400 text-sm transition-colors">eFOOTBALL SUPER LEAGUE 유튜브</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
