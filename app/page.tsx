@@ -68,6 +68,7 @@ export default function FootballLeagueApp() {
   // Banner States
   const [banners, setBanners] = useState<Banner[]>([]);
   const [bannerIdx, setBannerIdx] = useState(0);
+  const [bannerDelay, setBannerDelay] = useState(5000); // Rolling Delay
   const [bannerTitle, setBannerTitle] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
   const [touchStart, setTouchStart] = useState(0);
@@ -120,14 +121,18 @@ export default function FootballLeagueApp() {
     return () => clearInterval(timer);
   }, []);
 
-  // 🔥 [Updated] Banner Rolling Logic (Video Priority -> Random Image)
+  // 🔥 [Updated] Smart Rolling Logic (Video Priority + 30s Delay)
   useEffect(() => {
     if (banners.length <= 1) return;
-    const interval = setInterval(() => {
+    
+    const timer = setTimeout(() => {
       setBannerIdx((prev) => (prev + 1) % banners.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [banners.length]);
+      // Reset delay to 5s for subsequent items (unless logic changes in fetch)
+      setBannerDelay(5000);
+    }, bannerDelay);
+
+    return () => clearTimeout(timer);
+  }, [bannerIdx, banners.length, bannerDelay]);
 
   // Handle Swipe
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
@@ -138,8 +143,14 @@ export default function FootballLeagueApp() {
     const isLeftSwipe = distance > 50;
     const isRightSwipe = distance < -50;
     
-    if (isLeftSwipe) setBannerIdx((prev) => (prev + 1) % (banners.length || 1));
-    if (isRightSwipe) setBannerIdx((prev) => (prev - 1 + (banners.length || 1)) % (banners.length || 1));
+    if (isLeftSwipe) {
+      setBannerIdx((prev) => (prev + 1) % (banners.length || 1));
+      setBannerDelay(5000); // Reset delay on manual swipe
+    }
+    if (isRightSwipe) {
+      setBannerIdx((prev) => (prev - 1 + (banners.length || 1)) % (banners.length || 1));
+      setBannerDelay(5000);
+    }
     
     setTouchStart(0); setTouchEnd(0);
   };
@@ -156,25 +167,43 @@ export default function FootballLeagueApp() {
     const u3 = onSnapshot(query(collection(db, "seasons"), orderBy("id", "desc")), s => {
       const d = s.docs.map(doc => doc.data() as Season); 
       setSeasons(d);
-      
       if(d.length > 0) {
         if(viewSeasonId === 0) {
           setViewSeasonId(d[0].id);
-          // If in Admin view but looking at a season, keep it, otherwise set to New.
           if(typeof adminTab === 'number') setAdminTab(d[0].id);
         }
       } else {
-        // 🔥 [Fix] If no games, default to NEW
         setAdminTab('NEW');
         setViewSeasonId(0);
       }
     });
-    // 🔥 [Updated] Banner Fetch: Youtube First, Then Random Images
+
+    // 🔥 [Updated] Fetch Banners: Video First, Then Random, Set Delay
     const u4 = onSnapshot(collection(db, "banners"), s => {
       const rawBanners = s.docs.map(d => ({id:d.id, ...d.data()} as Banner));
+      
       const videos = rawBanners.filter(b => b.url.includes('youtube') || b.url.includes('youtu.be'));
-      const images = rawBanners.filter(b => !b.url.includes('youtube') && !b.url.includes('youtu.be')).sort(() => Math.random() - 0.5);
-      setBanners([...videos, ...images]);
+      const images = rawBanners.filter(b => !b.url.includes('youtube') && !b.url.includes('youtu.be'));
+      
+      // Randomize images
+      const shuffledImages = images.sort(() => Math.random() - 0.5);
+      
+      let finalBanners: Banner[] = [];
+      let initialDelay = 5000;
+
+      // If videos exist, pick one random video to show FIRST
+      if (videos.length > 0) {
+        const randomVideo = videos[Math.floor(Math.random() * videos.length)];
+        // Video first, then rest of images
+        finalBanners = [randomVideo, ...shuffledImages];
+        initialDelay = 30000; // 30s delay for video
+      } else {
+        finalBanners = shuffledImages;
+      }
+
+      setBanners(finalBanners);
+      setBannerIdx(0);
+      setBannerDelay(initialDelay);
     });
     return () => { u1(); u2(); u3(); u4(); };
   }, []);
@@ -560,7 +589,6 @@ export default function FootballLeagueApp() {
     } catch(e) { console.error(e); alert("실패"); } 
   };
 
-  // Banner Handlers
   const handleSaveBanner = async () => {
     if(!bannerTitle || !bannerUrl) return alert("제목과 URL을 입력하세요");
     await addDoc(collection(db, "banners"), { title: bannerTitle, url: bannerUrl, order: Date.now() });
@@ -580,8 +608,6 @@ export default function FootballLeagueApp() {
   const handleDeleteMasterTeam = async (id: string) => { if(confirm("팀을 삭제하시겠습니까?")) { await deleteDoc(doc(db, "master_teams", id)); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); } };
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{name:i.name,logo:i.logo||'',category:i.category||'CLUB',region:i.region||'',tier:i.tier||'A'}); setBulkInput(''); alert("완료"); } catch { alert("JSON 오류"); } };
   const handleInitCreateTeam = () => { setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); };
-  
-  // 🔥 [Fix] Admin Password Check
   const handleAdminAccess = () => {
     const pw = prompt("관리자 비밀번호를 입력하세요");
     if(pw === '#5093') setCurrentView('ADMIN');
@@ -617,7 +643,7 @@ export default function FootballLeagueApp() {
         
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_40</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_41</p>
           <div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50">
             <span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span>
           </div>
@@ -632,12 +658,11 @@ export default function FootballLeagueApp() {
         )}
       </div>
 
-      {/* Main Navigation - Simplified */}
+      {/* Main Navigation */}
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
         {[{id:'RANKING',l:'🏆 RANKING'}, {id:'SCHEDULE',l:'📅 SCHEDULE'}, {id:'HISTORY',l:'📜 ALL TIME'}, {id:'TUTORIAL',l:'📘 TUTORIAL'}].map(tab => (
           <button key={tab.id} onClick={() => setCurrentView(tab.id as any)} className={`px-6 py-3 rounded-xl border text-xs transition-all shadow-lg ${currentView === tab.id ? 'bg-blue-600 border-blue-400 text-white scale-105' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>{tab.l}</button>
         ))}
-        {/* Admin Button with Lock */}
         <button onClick={handleAdminAccess} className={`px-6 py-3 rounded-xl border text-xs transition-all shadow-lg ${currentView === 'ADMIN' ? 'bg-purple-600 border-purple-400 text-white scale-105' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>⚙️ ADMIN</button>
       </div>
 
@@ -657,7 +682,7 @@ export default function FootballLeagueApp() {
               </div>
             </div>
 
-            {/* 🔥 [UI Update] Rounded-xl for Tables */}
+            {/* 🔥 [UI Update] Less Rounded Tables */}
             {rankingTab === 'STANDINGS' && (
               <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
@@ -844,7 +869,7 @@ export default function FootballLeagueApp() {
             {adminTab === 'OWNER' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4"><h3 className="text-purple-400 font-bold">오너 관리</h3><div className="flex gap-4 flex-col md:flex-row"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="닉네임" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="이미지 URL (선택사항)" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleSaveOwner} className={`px-6 py-3 rounded font-bold whitespace-nowrap ${editOwnerId ? 'bg-blue-600' : 'bg-purple-600'}`}>{editOwnerId ? 'UPDATE' : 'ADD'}</button>{editOwnerId && <button onClick={()=>{setEditOwnerId(null); setNewOwnerName(''); setNewOwnerPhoto('')}} className="bg-slate-700 px-6 rounded">CANCEL</button>}</div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">{owners.map(o => (<div key={o.id} onClick={() => handleEditOwnerClick(o)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center gap-4 relative group cursor-pointer hover:border-blue-500"><img src={o.photo} alt="owner" className="w-12 h-12 rounded-full border-2 border-slate-700" /><span className="text-sm truncate">{o.nickname}</span><button onClick={(e) => {e.stopPropagation(); if(confirm('삭제?')) deleteDoc(doc(db,"users",o.docId!));}} className="ml-auto text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button></div>))}</div></div>}
             {adminTab === 'NEW' && <div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="시즌 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>{inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}</div></div><div className="bg-slate-950 p-4 rounded-xl border border-slate-800"><p className="text-xs text-slate-500 mb-2">Total Prize Pool</p><input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-900 p-2 rounded w-full border border-slate-700 mb-2 text-white" /><div className="flex justify-between text-xs text-slate-400 gap-2 overflow-x-auto"><div className="flex flex-col"><label>1st</label><input value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>2nd</label><input value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>3rd</label><input value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div><div className="flex flex-col"><label>Scorer</label><input value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-20 p-1 text-center border border-slate-700 rounded"/></div></div></div><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-3 rounded font-bold">시즌 생성하기</button></div>}
             
-            {/* Team Management (Moved inside Admin) */}
+            {/* Team Management (Inside Admin) */}
             {adminTab === 'TEAMS' && (
               <>
               <div className="flex justify-between items-center mb-4 px-2"><h3 className="text-lg font-bold italic text-slate-400">TEAM MANAGEMENT</h3><button onClick={handleInitCreateTeam} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">➕ 새로운 팀 등록하기</button></div>
@@ -905,21 +930,6 @@ export default function FootballLeagueApp() {
         )}
 
       </main>
-
-      <footer className="bg-slate-950 py-10 mt-12 border-t border-slate-900">
-        <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
-            <h4 className="text-white font-bold text-lg mb-2">eFOOTBALL SUPER LEAGUE</h4>
-            <p className="text-slate-500 text-sm">본 리그는 KONAMI eFOOTBALL로 진행 됩니다.<br/>대회 참가문의: joycube@gmail.com</p>
-            <p className="text-slate-600 text-xs mt-4">© 2026 eFOOTBALL SUPER LEAGUE. All rights reserved.</p>
-          </div>
-          <div className="flex flex-col gap-2 md:items-end">
-            <a href="https://www.konami.com/efootball/ko/" target="_blank" className="text-slate-400 hover:text-emerald-400 text-sm transition-colors">eFOOTBALL 공식 홈페이지</a>
-            <a href="https://www.konami.com/games/" target="_blank" className="text-slate-400 hover:text-emerald-400 text-sm transition-colors">KONAMI</a>
-            <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" className="text-slate-400 hover:text-red-400 text-sm transition-colors">eFOOTBALL SUPER LEAGUE 유튜브</a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

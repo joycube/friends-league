@@ -9,8 +9,10 @@ export const metadata: Metadata = {
   title: 'eFOOTBALL SUPER LEAGUE - 지금 e풋볼 리그에 도전하세요',
   description: '지금 eFOOTBALL 리그에 참여하세요. 참여문의 joycube@gamil.com',
   icons: {
-    icon: '/icon.webp', // public 폴더에 이미지 파일을 icon.webp로 저장하세요
-    shortcut: '/icon.webp',
+    // ?v=P41 을 붙여서 브라우저가 강제로 새 아이콘을 읽게 합니다.
+    icon: '/icon.webp?v=P41', 
+    shortcut: '/icon.webp?v=P41',
+    apple: '/icon.webp?v=P41', 
   },
   openGraph: {
     title: 'eFOOTBALL SUPER LEAGUE',
