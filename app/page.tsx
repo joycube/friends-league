@@ -154,15 +154,26 @@ export default function FootballLeagueApp() {
     const u1 = onSnapshot(query(collection(db, "users"), orderBy("id", "asc")), s => setOwners(s.docs.map(d => ({...d.data(), docId: d.id} as Owner))));
     const u2 = onSnapshot(collection(db, "master_teams"), s => setMasterTeams(s.docs.map(d => ({id:d.id, ...d.data()} as MasterTeam))));
     const u3 = onSnapshot(query(collection(db, "seasons"), orderBy("id", "desc")), s => {
-      const d = s.docs.map(doc => doc.data() as Season); setSeasons(d);
-      if(d.length > 0 && viewSeasonId === 0) {
-        setViewSeasonId(d[0].id);
-        setAdminTab(d[0].id);
+      const d = s.docs.map(doc => doc.data() as Season); 
+      setSeasons(d);
+      
+      // 🔥 [Fix] Auto-switch to 'NEW' if no seasons exist
+      if(d.length > 0) {
+        if(viewSeasonId === 0) {
+          setViewSeasonId(d[0].id);
+          setAdminTab(d[0].id);
+        }
+      } else {
+        setAdminTab('NEW');
+        setViewSeasonId(0);
       }
     });
-    // 🔥 Banner Fetch
-    const u4 = onSnapshot(query(collection(db, "banners"), orderBy("order", "asc")), s => {
-      setBanners(s.docs.map(d => ({id:d.id, ...d.data()} as Banner)));
+    // 🔥 [Fix] Random Banner Order
+    const u4 = onSnapshot(collection(db, "banners"), s => {
+      const rawBanners = s.docs.map(d => ({id:d.id, ...d.data()} as Banner));
+      // Shuffle banners
+      const shuffled = rawBanners.sort(() => Math.random() - 0.5);
+      setBanners(shuffled);
     });
     return () => { u1(); u2(); u3(); u4(); };
   }, []);
@@ -282,12 +293,13 @@ export default function FootballLeagueApp() {
     await setDoc(doc(db, "seasons", String(id)), { id, name: inputSeasonName, type: inputSeasonType, leagueMode: inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive: true, teams: [], rounds: [], prizes: { total: inputTotalPrize, ...prizes } });
     setAdminTab(id); setViewSeasonId(id); setInputSeasonName('');
   };
+  
   // 🔥 [Fix] Delete Season UX: Go to 'NEW' tab
   const handleDeleteSeason = async () => {
     if(typeof adminTab !== 'number') return;
     if(confirm("⚠️ 삭제하시겠습니까?")) { 
       await deleteDoc(doc(db, "seasons", String(adminTab))); 
-      setAdminTab('NEW'); // Go to New Game
+      setAdminTab('NEW'); 
       setViewSeasonId(0); 
       setInputSeasonName('');
       alert("삭제되었습니다. 새로운 게임을 생성하세요."); 
@@ -591,10 +603,11 @@ export default function FootballLeagueApp() {
         )}
         
         <div className="absolute bottom-6 left-6 uppercase z-10">
-          <h1 className="text-4xl md:text-5xl text-white font-black italic">eFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-sm font-sans not-italic tracking-widest mt-1">ver. League Master P_38</p>
+          {/* 🔥 [Updated] Banner Text Size */}
+          <h1 className="text-2xl md:text-4xl text-white font-black italic">eFOOTBALL SUPER LEAGUE™</h1>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_39</p>
           <div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50">
-            <span className="text-emerald-300 font-mono text-xs tracking-widest">{currentTime}</span>
+            <span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span>
           </div>
         </div>
 
@@ -608,9 +621,9 @@ export default function FootballLeagueApp() {
         )}
       </div>
 
-      {/* Main Navigation */}
+      {/* Main Navigation (Tutorial Moved to End) */}
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
-        {[{id:'RANKING',l:'🏆 RANKING'}, {id:'SCHEDULE',l:'📅 SCHEDULE'}, {id:'HISTORY',l:'📜 ALL TIME'}, {id:'TUTORIAL',l:'📘 TUTORIAL'}, {id:'ADMIN',l:'⚙️ ADMIN'}, {id:'TEAMS',l:'🛡️ TEAMS'}].map(tab => (
+        {[{id:'RANKING',l:'🏆 RANKING'}, {id:'SCHEDULE',l:'📅 SCHEDULE'}, {id:'HISTORY',l:'📜 ALL TIME'}, {id:'ADMIN',l:'⚙️ ADMIN'}, {id:'TEAMS',l:'🛡️ TEAMS'}, {id:'TUTORIAL',l:'📘 TUTORIAL'}].map(tab => (
           <button key={tab.id} onClick={() => setCurrentView(tab.id as any)} className={`px-6 py-3 rounded-xl border text-xs transition-all shadow-lg ${currentView === tab.id ? 'bg-blue-600 border-blue-400 text-white scale-105' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>{tab.l}</button>
         ))}
       </div>
@@ -717,7 +730,6 @@ export default function FootballLeagueApp() {
                       </div>
                       {m.status === 'FINISHED' && (
                         <div className="border-t border-slate-800 pt-3 flex flex-col gap-2 font-sans not-italic">
-                          {/* 🔥 [Fix] Remove Team Name in Scorer List */}
                           {(m.homeScorers||[]).map((s, i) => <div key={`h${i}`} className="text-xs text-left text-blue-300">⚽ {s.name} {s.count>1&&`(${s.count})`}</div>)}
                           {(m.awayScorers||[]).map((s, i) => <div key={`a${i}`} className="text-xs text-right text-red-300">⚽ {s.name} {s.count>1&&`(${s.count})`}</div>)}
                         </div>
