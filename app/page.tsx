@@ -114,6 +114,10 @@ export default function FootballLeagueApp() {
   const [leagueLogo, setLeagueLogo] = useState('');
   const [leagueCategory, setLeagueCategory] = useState<'CLUB' | 'NATIONAL'>('CLUB');
   const [editLeagueId, setEditLeagueId] = useState<string | null>(null);
+  
+  // 🔥 [New] To track renaming of unregistered regions
+  const [tempRegionName, setTempRegionName] = useState<string | null>(null);
+  
   const leagueFormRef = useRef<HTMLDivElement>(null);
 
   const [bannerTitle, setBannerTitle] = useState('');
@@ -265,8 +269,19 @@ export default function FootballLeagueApp() {
       setEditLeagueId(null);
     } else {
       await addDoc(collection(db, "leagues"), {name:leagueName,logo:leagueLogo,category:leagueCategory}); 
+      
+      // 🔥 [Fix] Logic to update teams if a Suggestion was registered with a changed name
+      if (tempRegionName && tempRegionName !== leagueName) {
+         if(confirm(`기존 '${tempRegionName}' 소속 팀들을 새로운 리그 '${leagueName}'으로 이동시키겠습니까?`)) {
+           const batch = writeBatch(db);
+           masterTeams.filter(t => t.region === tempRegionName).forEach(t => {
+             batch.update(doc(db, "master_teams", t.id!), { region: leagueName });
+           });
+           await batch.commit();
+         }
+      }
     }
-    setLeagueName(''); setLeagueLogo('');
+    setLeagueName(''); setLeagueLogo(''); setTempRegionName(null);
   };
 
   const handleDeleteLeague = async (l: League) => { 
@@ -283,13 +298,11 @@ export default function FootballLeagueApp() {
   const handleLeagueSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
     if(selectedId === 'NEW') {
-      setEditLeagueId(null); setLeagueName(''); setLeagueLogo(''); setLeagueCategory(leagueManageTab);
+      setEditLeagueId(null); setLeagueName(''); setLeagueLogo(''); setLeagueCategory(leagueManageTab); setTempRegionName(null);
     } else {
       const l = leagues.find(x => x.id === selectedId);
       if(l) {
-        setEditLeagueId(l.id!); setLeagueName(l.name); setLeagueLogo(l.logo); setLeagueCategory(l.category);
-      } else {
-        setEditLeagueId(null); setLeagueName(selectedId); setLeagueLogo(''); setLeagueCategory(leagueManageTab);
+        setEditLeagueId(l.id!); setLeagueName(l.name); setLeagueLogo(l.logo); setLeagueCategory(l.category); setTempRegionName(null);
       }
     }
   };
@@ -299,6 +312,7 @@ export default function FootballLeagueApp() {
     setLeagueName(l.name); 
     setLeagueLogo(l.logo); 
     setLeagueCategory(l.category);
+    setTempRegionName(null);
     leagueFormRef.current?.scrollIntoView({behavior:'smooth'});
   };
   
@@ -307,6 +321,7 @@ export default function FootballLeagueApp() {
     setLeagueName(name);
     setLeagueLogo('');
     setLeagueCategory(leagueManageTab);
+    setTempRegionName(name); // 🔥 Remember original region name
     leagueFormRef.current?.scrollIntoView({behavior:'smooth'});
   };
 
@@ -429,12 +444,12 @@ export default function FootballLeagueApp() {
   const targetTeamsBase = masterTeams.filter(t => t.category === manageTab);
   
   // Variables for View - League Management
-  // 🔥 [Fix] Create specific variables for League Admin to respond to toggle
   const leagueAdminTeams = masterTeams.filter(t => t.category === leagueManageTab);
   const leagueAdminExistingRegions = Array.from(new Set(leagueAdminTeams.map(t => t.region)));
   const leagueAdminRegisteredLeagues = leagues.filter(l => l.category === leagueManageTab);
   const leagueAdminRegisteredNames = leagueAdminRegisteredLeagues.map(l => l.name);
   const suggestedRegions = leagueAdminExistingRegions.filter(r => !leagueAdminRegisteredNames.includes(r) && r !== '무소속').sort();
+  // 🔥 [Fix] Display logic for preview teams in League Edit
   const teamsInEditLeague = (editLeagueId || leagueName) ? masterTeams.filter(t => t.region === leagueName) : [];
 
   // Team Management Logic
@@ -464,6 +479,7 @@ export default function FootballLeagueApp() {
     setManageRegion('ALL');
     setManageTier('ALL');
     setManageSearch('');
+    setSelectedLeagueForFilter(null);
   };
 
   const showGrid = manageRegion === 'ALL' && manageSearch === '' && manageTier === 'ALL';
@@ -480,7 +496,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_78_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_76_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -544,9 +560,8 @@ export default function FootballLeagueApp() {
                   <button onClick={handleSaveLeague} className="bg-yellow-600 text-black px-6 py-3 rounded font-bold whitespace-nowrap text-sm">{editLeagueId ? '수정 저장' : '새로 등록'}</button>
                 </div>
 
-                {/* 🔥 [New] Smart Suggestion & Preview */}
+                {/* Smart Suggestion & Preview */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  {/* Left: Suggested Regions (Unregistered) */}
                   <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                     <p className="text-xs text-orange-400 mb-2 font-bold flex items-center">🔔 미등록 지역 발견 <span className="text-[9px] text-slate-500 ml-1">(클릭하여 리그로 등록)</span></p>
                     <div className="flex flex-wrap gap-2">
@@ -558,12 +573,11 @@ export default function FootballLeagueApp() {
                     </div>
                   </div>
                   
-                  {/* Right: Teams in Current Editing League */}
                   <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                     <p className="text-xs text-slate-500 mb-2 font-bold">'{leagueName || '선택된 리그'}' 소속 팀 ({teamsInEditLeague.length})</p>
                     <div className="flex flex-wrap gap-2 max-h-[60px] overflow-y-auto pr-1">
                       {teamsInEditLeague.length > 0 ? teamsInEditLeague.map(t => (
-                        <span key={t.id} className="bg-slate-950 px-2 py-1 rounded border border-slate-700 text-[10px] flex items-center gap-1">
+                        <span key={t.id} className="bg-slate-900 px-2 py-1 rounded border border-slate-700 text-[10px] flex items-center gap-1">
                           <img src={t.logo} alt={t.name} className="w-3 h-3 object-contain" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/> {t.name}
                         </span>
                       )) : <span className="text-[10px] text-slate-600">-</span>}
@@ -674,7 +688,7 @@ export default function FootballLeagueApp() {
                   <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">
                     {(recordActiveS?.teams || []).map(t => (
                       <span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2">
-                        <img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                        <img src={t.logo} alt={t.name} className="w-5 h-5 object-contain bg-white rounded-full p-0.5" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                         <div className="flex flex-col"><span className="text-white font-bold">{t.name}</span><span className="text-slate-500 text-[9px] uppercase">{t.region} • {t.tier} • {t.ownerName}</span></div>
                         <button onClick={() => handleRemoveTeamFromSeason(t.id)} className="ml-2 text-red-500 hover:text-red-300 font-bold">×</button>
                       </span>
