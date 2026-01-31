@@ -44,13 +44,9 @@ const getBannerContent = (b: Banner) => {
   return <img src={b.url} alt={b.title} className="w-full h-full object-cover opacity-80" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}} />;
 };
 
-const getSortedTeamsLogic = (teams: MasterTeam[], tab: string, tier: string, region: string, search: string) => {
-  const base = teams.filter(t => 
-    (tab === 'ALL' || t.category === tab) && 
-    (tier === 'ALL' || t.tier === tier) && 
-    (region === 'ALL' || t.region === region) && 
-    t.name.toLowerCase().includes(search.toLowerCase())
-  );
+const getSortedTeamsLogic = (teams: MasterTeam[], search: string) => {
+  let base = teams;
+  if(search) base = base.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
   return base.sort((a, b) => a.name.localeCompare(b.name));
 };
 
@@ -436,16 +432,15 @@ export default function FootballLeagueApp() {
     };
   }).filter(g => g.name !== '' && (g.count > 0 || registeredLeagueNames.includes(g.name))); 
 
+  // 🔥 [Fix] Ensure teams are properly filtered for List View
   const teamsToDisplay = targetTeamsBase.filter(t => 
     (manageRegion === 'ALL' || t.region === manageRegion) &&
     (manageTier === 'ALL' || t.tier === manageTier) &&
     t.name.toLowerCase().includes(manageSearch.toLowerCase())
   );
   
-  // Filtered List
   const filteredTeams = getSortedTeamsLogic(teamsToDisplay, '', '', '', '');
 
-  // 🔥 [Fix] Logic fixed: removed bad call
   const resetFilters = () => {
     setManageRegion('ALL');
     setManageTier('ALL');
@@ -468,7 +463,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_74_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_75_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -647,7 +642,7 @@ export default function FootballLeagueApp() {
                   <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">
                     {(recordActiveS?.teams || []).map(t => (
                       <span key={t.id} className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-[11px] flex items-center gap-2">
-                        <img src={t.logo} alt={t.name} className="w-5 h-5 object-contain bg-white rounded-full p-0.5" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                        <img src={t.logo} alt="team" className="w-5 h-5 object-contain bg-white rounded-full p-0.5" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                         <div className="flex flex-col"><span className="text-white font-bold">{t.name}</span><span className="text-slate-500 text-[9px] uppercase">{t.region} • {t.tier} • {t.ownerName}</span></div>
                         <button onClick={() => handleRemoveTeamFromSeason(t.id)} className="ml-2 text-red-500 hover:text-red-300 font-bold">×</button>
                       </span>
