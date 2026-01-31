@@ -33,7 +33,7 @@ const DEFAULT_LEAGUES = [
   "K League", "J League", "MLS", "Saudi Pro League",
   "Asia/Oceania", "Europe", "South America", "North America", "Africa", "Others"
 ];
-const FALLBACK_IMG = "https://www.konami.com/efootball/s/img/main_page_1.png?v=903"; // 이미지 깨질 때 기본 이미지
+const FALLBACK_IMG = "https://www.konami.com/efootball/s/img/main_page_1.png?v=903";
 
 // --- [Helper Functions] ---
 const getBannerContent = (b: Banner) => {
@@ -295,6 +295,14 @@ export default function FootballLeagueApp() {
     }
   };
 
+  // 🔥 [Fix] Added missing handler for League Card Click
+  const handleEditLeagueClick = (l: League) => {
+    setEditLeagueId(l.id!); 
+    setLeagueName(l.name); 
+    setLeagueLogo(l.logo); 
+    setLeagueCategory(l.category);
+  };
+
   // Team Handlers
   const handleSaveMaster = async () => { 
     if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam as any); 
@@ -438,11 +446,11 @@ export default function FootballLeagueApp() {
   // Filtered List
   const filteredTeams = getSortedTeamsLogic(teamsToDisplay, '', '', '', '');
 
-  // 🔥 [Fix] Removed the call to undefined 'setSelectedLeagueForFilter'
   const resetFilters = () => {
     setManageRegion('ALL');
     setManageTier('ALL');
     setManageSearch('');
+    setSelectedLeagueForFilter(null);
   };
 
   const showGrid = manageRegion === 'ALL' && manageSearch === '' && manageTier === 'ALL';
@@ -461,7 +469,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_72_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_73_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -560,11 +568,13 @@ export default function FootballLeagueApp() {
                   </div>
                   <div className="flex gap-2 flex-1 w-full justify-end">
                     <select value={manageTier} onChange={e => setManageTier(e.target.value)} className="bg-slate-950 p-2 rounded-xl border border-slate-700 text-xs"><option value="ALL">등급 전체</option><option value="S">S등급</option><option value="A">A등급</option><option value="B">B등급</option><option value="C">C등급</option></select>
+                    {/* 🔥 [Fix] Dropdown updates Grid/List */}
                     <select value={manageRegion} onChange={e => setManageRegion(e.target.value)} className="bg-slate-950 p-2 rounded-xl border border-slate-700 text-xs w-32"><option value="ALL">리그 전체</option>{groupData.map((g,i)=><option key={i} value={g.name}>{g.name}</option>)}</select>
                     <input value={manageSearch} onChange={e=>setManageSearch(e.target.value)} placeholder="팀 이름 검색..." className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-700 text-xs w-full md:w-48"/>
                   </div>
                 </div>
 
+                {/* 🔥 [Updated] Grouped List View */}
                 {showGrid ? (
                   <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-8">
                     {groupData.map((l, idx) => (<div key={idx} onClick={() => setManageRegion(l.name)} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 hover:bg-slate-800 transition-all"><img src={l.logo} alt={l.name} className="w-10 h-10 object-contain bg-white rounded-full p-1" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/><span className="text-[10px] font-bold text-center leading-tight">{l.name}</span><span className="text-[8px] text-slate-500">({l.count})</span></div>))}
@@ -604,6 +614,7 @@ export default function FootballLeagueApp() {
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans not-italic mb-4">
                     <select value={manualTeam.category} onChange={e => setManualTeam({...manualTeam, category: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select>
                     <select value={manualTeam.tier} onChange={e => setManualTeam({...manualTeam, tier: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="S">S등급</option><option value="A">A등급</option><option value="B">B등급</option><option value="C">C등급</option></select>
+                    {/* 🔥 [Fix] Fallback for Combobox */}
                     <select value={manualTeam.region} onChange={e => setManualTeam({...manualTeam, region: e.target.value})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm">
                       <option value="">리그/지역 선택</option>
                       <optgroup label="등록된 리그">{leagues.filter(l=>l.category===manualTeam.category).map(l=><option key={l.id} value={l.name}>{l.name}</option>)}</optgroup>
