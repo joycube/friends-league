@@ -295,7 +295,6 @@ export default function FootballLeagueApp() {
     }
   };
 
-  // 🔥 [Fix] Added missing handler for League Card Click
   const handleEditLeagueClick = (l: League) => {
     setEditLeagueId(l.id!); 
     setLeagueName(l.name); 
@@ -446,11 +445,11 @@ export default function FootballLeagueApp() {
   // Filtered List
   const filteredTeams = getSortedTeamsLogic(teamsToDisplay, '', '', '', '');
 
+  // 🔥 [Fix] Logic fixed: removed bad call
   const resetFilters = () => {
     setManageRegion('ALL');
     setManageTier('ALL');
     setManageSearch('');
-    setSelectedLeagueForFilter(null);
   };
 
   const showGrid = manageRegion === 'ALL' && manageSearch === '' && manageTier === 'ALL';
@@ -469,7 +468,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_73_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_74_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
