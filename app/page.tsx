@@ -104,7 +104,6 @@ export default function FootballLeagueApp() {
   const [banners, setBanners] = useState<Banner[]>([]);
   
   const [bannerIdx, setBannerIdx] = useState(0);
-  const [bannerDelay, setBannerDelay] = useState(5000);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
@@ -114,7 +113,7 @@ export default function FootballLeagueApp() {
   const [inputLeagueMode, setInputLeagueMode] = useState<'SINGLE' | 'DOUBLE'>('SINGLE');
   const [inputTotalPrize, setInputTotalPrize] = useState(100000);
   const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000 });
-  const [isAutoPrize, setIsAutoPrize] = useState(true); // 🔥 Auto Calc Flag
+  const [isAutoPrize, setIsAutoPrize] = useState(true);
 
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
@@ -164,23 +163,30 @@ export default function FootballLeagueApp() {
     return () => clearInterval(t);
   }, []);
 
+  // 🔥 [Update] Banner Timing Logic
   useEffect(() => {
-    if (banners.length <= 1) return;
-    const t = setTimeout(() => { setBannerIdx((p) => (p + 1) % banners.length); setBannerDelay(5000); }, bannerDelay);
+    if (banners.length === 0) return;
+    const currentBanner = banners[bannerIdx];
+    const isVideo = currentBanner && (currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be'));
+    const delay = isVideo ? 15000 : 5000; // 15s for video, 5s for image
+
+    const t = setTimeout(() => {
+      setBannerIdx((prev) => (prev + 1) % banners.length);
+    }, delay);
+
     return () => clearTimeout(t);
-  }, [bannerIdx, banners, bannerDelay]);
+  }, [bannerIdx, banners]);
 
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
   const handleTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
     const dist = touchStart - touchEnd;
-    if (dist > 50) { setBannerIdx((p) => (p + 1) % (banners.length || 1)); setBannerDelay(5000); }
-    if (dist < -50) { setBannerIdx((p) => (p - 1 + (banners.length || 1)) % (banners.length || 1)); setBannerDelay(5000); }
+    if (dist > 50) setBannerIdx((p) => (p + 1) % (banners.length || 1));
+    if (dist < -50) setBannerIdx((p) => (p - 1 + (banners.length || 1)) % (banners.length || 1));
     setTouchStart(0); setTouchEnd(0);
   };
 
-  // 🔥 [Updated] Auto-Calc Prize Logic
   useEffect(() => { 
     if (isAutoPrize) {
       setPrizes({ 
@@ -215,7 +221,6 @@ export default function FootballLeagueApp() {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
     if(!targetSeason?.teams) return { teams: [], owners: [], players: [], highlights: [] };
     
-    // 1. Team Stats
     const teamStats = new Map<string, Team>();
     targetSeason.teams.forEach(t => teamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 }));
     targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
@@ -229,10 +234,8 @@ export default function FootballLeagueApp() {
       }
     }));
     
-    // 2. Rank & Rank Prize Calculation
     const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((t, i) => ({ ...t, rank: i+1, currentPrize: i===0?targetSeason.prizes.first:i===1?targetSeason.prizes.second:i===2?targetSeason.prizes.third:0 }));
     
-    // 3. Player Stats & Top Scorer
     const pMap = new Map<string, any>();
     targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
       if(m.status === 'FINISHED') {
@@ -242,12 +245,10 @@ export default function FootballLeagueApp() {
     }));
     const players = Array.from(pMap.values());
     
-    // 4. Find Top Scorers and Assign Scorer Prize
     let maxGoals = 0;
     players.forEach(p => { if(p.goals > maxGoals) maxGoals = p.goals; });
     const topScorers = players.filter(p => p.goals === maxGoals && maxGoals > 0);
     
-    // 5. Owner Stats Aggregation (Including Scorer Prize)
     const ownerMap = new Map<string, any>();
     teams.forEach(t => {
       if(!ownerMap.has(t.ownerName)) ownerMap.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0});
@@ -256,12 +257,7 @@ export default function FootballLeagueApp() {
       o.prize += (t.currentPrize || 0);
     });
     
-    // Add Scorer Prize to Owners
-    topScorers.forEach(p => {
-       if(ownerMap.has(p.owner)) {
-         ownerMap.get(p.owner).prize += targetSeason.prizes.scorer; 
-       }
-    });
+    topScorers.forEach(p => { if(ownerMap.has(p.owner)) ownerMap.get(p.owner).prize += targetSeason.prizes.scorer; });
 
     return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players, highlights: targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl) || [] };
   }, [seasons, viewSeasonId]);
@@ -271,7 +267,6 @@ export default function FootballLeagueApp() {
     seasons.forEach(s => {
       const seasonTeams = new Map<string, Team>();
       const seasonPlayers = new Map<string, any>();
-      
       s.teams?.forEach(t => seasonTeams.set(t.name, { ...t, win:0, draw:0, loss:0, points:0, currentPrize:0 }));
       s.rounds?.forEach(r => r.matches.forEach(m => {
         if(m.status==='FINISHED' && m.homeScore && m.awayScore) {
@@ -282,14 +277,11 @@ export default function FootballLeagueApp() {
           [...m.homeAssists, ...m.awayAssists].forEach(p => { if(!seasonPlayers.has(p.name)) seasonPlayers.set(p.name, {name:p.name, owner:m.homeOwner, goals:0, assists:0}); seasonPlayers.get(p.name).assists+=p.count; });
         }
       }));
-      
-      // Calculate Scorer Prize for this season
       let maxGoals = 0;
       const sPlayersArr = Array.from(seasonPlayers.values());
       sPlayersArr.forEach((p:any) => { if(p.goals > maxGoals) maxGoals = p.goals; });
       const topScorers = sPlayersArr.filter((p:any) => p.goals === maxGoals && maxGoals > 0);
 
-      // Aggregate Total Stats
       Array.from(seasonTeams.values()).sort((a,b) => b.points-a.points).forEach((t, i) => {
         if(!tMap.has(t.name)) tMap.set(t.name, {name:t.name, owner:t.ownerName, logo:t.logo, w:0, d:0, l:0, pts:0});
         const tm = tMap.get(t.name); tm.w+=t.win; tm.d+=t.draw; tm.l+=t.loss; tm.pts+=t.points;
@@ -297,17 +289,8 @@ export default function FootballLeagueApp() {
         if(!oMap.has(t.ownerName)) oMap.set(t.ownerName, {name:t.ownerName, w:0, d:0, l:0, pts:0, prize:0});
         const om = oMap.get(t.ownerName); om.w+=t.win; om.d+=t.draw; om.l+=t.loss; om.pts+=t.points; om.prize+=rankPrize;
       });
-      
-      // Add Scorer Prize to History Owner Stats
-      topScorers.forEach((p:any) => {
-         if(oMap.has(p.owner)) oMap.get(p.owner).prize += s.prizes.scorer;
-      });
-      
-      // Add Player Stats
-      sPlayersArr.forEach((p:any) => {
-         if(!pMap.has(p.name)) pMap.set(p.name, {name:p.name, owner:p.owner, goals:0, assists:0});
-         const pm = pMap.get(p.name); pm.goals+=p.goals; pm.assists+=p.assists;
-      });
+      topScorers.forEach((p:any) => { if(oMap.has(p.owner)) oMap.get(p.owner).prize += s.prizes.scorer; });
+      sPlayersArr.forEach((p:any) => { if(!pMap.has(p.name)) pMap.set(p.name, {name:p.name, owner:p.owner, goals:0, assists:0}); const pm = pMap.get(p.name); pm.goals+=p.goals; pm.assists+=p.assists; });
     });
     return { teams: Array.from(tMap.values()), owners: Array.from(oMap.values()), players: Array.from(pMap.values()) };
   }, [seasons]);
@@ -344,7 +327,6 @@ export default function FootballLeagueApp() {
       setEditLeagueId(null);
     } else {
       await addDoc(collection(db, "leagues"), {name:leagueName,logo:leagueLogo,category:leagueCategory}); 
-      
       if (tempRegionName && tempRegionName !== leagueName) {
          if(confirm(`기존 '${tempRegionName}' 소속 팀들을 새로운 리그 '${leagueName}'으로 이동시키겠습니까?`)) {
            const batch = writeBatch(db);
@@ -407,12 +389,10 @@ export default function FootballLeagueApp() {
   };
   const handleDeleteMasterTeam = async (mt: MasterTeam) => { if(confirm(`'${mt.name}' 팀을 정말 삭제하시겠습니까?`)) await deleteDoc(doc(db,"master_teams",mt.id!)); };
   
-  // Instant Tier Update
   const handleQuickTierUpdate = async (teamId: string, newTier: any) => {
     await updateDoc(doc(db, "master_teams", teamId), { tier: newTier });
   };
 
-  // Reset All Tiers
   const handleResetAllTiers = async () => {
     if(!confirm("⚠️ 모든 팀을 C등급으로 초기화하시겠습니까?\n(미등록 리그 팀은 '무소속'으로 이동됩니다)")) return;
     const batch = writeBatch(db);
@@ -433,7 +413,7 @@ export default function FootballLeagueApp() {
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{...i}); setBulkInput(''); } catch {} };
   const handleInitCreateTeam = () => { setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); };
 
-  // Team Assignment Handlers
+  // Team Assignment
   const recordActiveS = seasons.find(s => s.id === adminTab);
   const handleConfirmTeam = async () => {
     if(selOwnerId && selTeamName) {
@@ -452,38 +432,77 @@ export default function FootballLeagueApp() {
     if(available.length>0) { const r=available[Math.floor(Math.random()*available.length)]; setSelTeamName(r.name); }
   };
   
+  // 🔥 [NEW] Robust Schedule Generator with Owner Constraint & Round Balancing
   const handleGenerateSchedule = async () => {
-    if(!recordActiveS || (recordActiveS.teams||[]).length<2) return alert("팀이 부족합니다 (최소 2팀)");
-    if(confirm("스케줄을 생성하시겠습니까?")) {
+    if(!recordActiveS || (recordActiveS.teams||[]).length < 2) return alert("팀이 부족합니다 (최소 2팀)");
+    if(confirm("기존 스케줄이 있다면 삭제되고 새로 생성됩니다. 진행하시겠습니까?")) {
       const teams = [...(recordActiveS.teams||[])];
       const rounds: Round[] = [];
-      if(recordActiveS.type==='TOURNAMENT') {
-         const shuffled = teams.sort(()=>Math.random()-0.5);
-         const matches: Match[] = [];
-         for(let i=0; i<shuffled.length; i+=2) {
-           if(i+1<shuffled.length) matches.push({id:`${recordActiveS.id}_R1_${i}`, seasonId:recordActiveS.id, home:shuffled[i].name, away:shuffled[i+1].name, homeLogo:shuffled[i].logo, awayLogo:shuffled[i+1].logo, homeOwner:shuffled[i].ownerName, awayOwner:shuffled[i+1].ownerName, homeScore:'', awayScore:'', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], status:'UPCOMING', youtubeUrl:''});
-         }
-         rounds.push({round:1, matches, seasonId:recordActiveS.id, name:'Round 1'});
-      } else {
-        let pairs = [];
-        for(let i=0; i<teams.length; i++) for(let j=i+1; j<teams.length; j++) if(teams[i].ownerName!==teams[j].ownerName) { pairs.push({h:teams[i],a:teams[j]}); if(recordActiveS.leagueMode==='DOUBLE') pairs.push({h:teams[j],a:teams[i]}); }
-        pairs = pairs.sort(()=>Math.random()-0.5);
-        let r=1;
-        while(pairs.length>0) {
-          const roundMatches: Match[] = [];
-          const used = new Set();
-          const nextPairs = [];
-          for(const p of pairs) {
-             if(!used.has(p.h.name) && !used.has(p.a.name)) {
-               used.add(p.h.name); used.add(p.a.name);
-               roundMatches.push({id:`${recordActiveS.id}_R${r}_${p.h.name}`, seasonId:recordActiveS.id, home:p.h.name, away:p.a.name, homeLogo:p.h.logo, awayLogo:p.a.logo, homeOwner:p.h.ownerName, awayOwner:p.a.ownerName, homeScore:'', awayScore:'', homeScorers:[], awayScorers:[], homeAssists:[], awayAssists:[], status:'UPCOMING', youtubeUrl:''});
-             } else nextPairs.push(p);
+
+      // 1. Generate All Valid Pairs (Owner Constraint)
+      let allMatches: any[] = [];
+      for(let i=0; i<teams.length; i++) {
+        for(let j=i+1; j<teams.length; j++) {
+          if (teams[i].ownerName !== teams[j].ownerName) {
+            allMatches.push({ home: teams[i], away: teams[j] });
+            if (recordActiveS.leagueMode === 'DOUBLE') {
+              allMatches.push({ home: teams[j], away: teams[i] });
+            }
           }
-          if(roundMatches.length>0) { rounds.push({round:r, matches:roundMatches, seasonId:recordActiveS.id}); r++; }
-          pairs = nextPairs;
         }
       }
+
+      // Shuffle Matches
+      allMatches = allMatches.sort(() => Math.random() - 0.5);
+
+      // 2. Distribute to Rounds (Greedy with Round Buckets)
+      // Attempt to place matches into rounds such that no team plays twice in a round
+      const scheduleRounds: any[] = [];
+      
+      for (const match of allMatches) {
+        let placed = false;
+        for (let r = 0; r < scheduleRounds.length; r++) {
+          const roundMatches = scheduleRounds[r];
+          // Check if home or away team is already playing in this round
+          const isConflict = roundMatches.some((m:any) => m.home.name === match.home.name || m.away.name === match.home.name || m.home.name === match.away.name || m.away.name === match.away.name);
+          
+          if (!isConflict) {
+            roundMatches.push(match);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          // Create new round
+          scheduleRounds.push([match]);
+        }
+      }
+
+      // 3. Format for DB
+      scheduleRounds.forEach((matches, idx) => {
+        const formattedMatches: Match[] = matches.map((m:any) => ({
+          id: `${recordActiveS.id}_R${idx+1}_${m.home.name}_vs_${m.away.name}`,
+          seasonId: recordActiveS.id,
+          home: m.home.name,
+          away: m.away.name,
+          homeLogo: m.home.logo,
+          awayLogo: m.away.logo,
+          homeOwner: m.home.ownerName,
+          awayOwner: m.away.ownerName,
+          homeScore: '',
+          awayScore: '',
+          homeScorers: [],
+          awayScorers: [],
+          homeAssists: [],
+          awayAssists: [],
+          status: 'UPCOMING',
+          youtubeUrl: ''
+        }));
+        rounds.push({ round: idx + 1, matches: formattedMatches, seasonId: recordActiveS.id });
+      });
+
       await updateDoc(doc(db,"seasons",String(adminTab)), {rounds});
+      alert(`스케줄 생성 완료! 총 ${rounds.length}라운드가 생성되었습니다.`);
     }
   };
 
@@ -591,7 +610,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_85_Master</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_86_Master</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -865,37 +884,7 @@ export default function FootballLeagueApp() {
             )}
             
             {adminTab === 'BANNER' && (<div className="bg-slate-900/60 p-8 rounded-3xl border border-blue-500/30 space-y-4"><h3 className="text-blue-400 font-bold">배너 이미지/영상 관리</h3><div className="flex gap-4 flex-col md:flex-row"><input value={bannerTitle} onChange={e=>setBannerTitle(e.target.value)} placeholder="제목" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} placeholder="URL" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleSaveBanner} className="bg-blue-600 px-6 py-3 rounded font-bold whitespace-nowrap">등록</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">{banners.map(b => (<div key={b.id} className="relative group rounded-xl overflow-hidden border border-slate-700 aspect-video">{getBannerContent(b)}<div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleDeleteBanner(b.id!)} className="bg-red-600 text-white px-4 py-2 rounded font-bold">삭제</button></div></div>))}</div></div>)}
-            {adminTab === 'NEW' && (<div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3>
-              
-              {/* 🔥 [New] Smart Prize Calculator UI */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                <div className="space-y-2">
-                  <label className="text-xs text-slate-400 font-bold">시즌 이름</label>
-                  <input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="예: 2026 Season 1" className="bg-slate-950 p-4 rounded-xl w-full border border-slate-700 text-white"/>
-                </div>
-                <div className="space-y-2">
-                   <label className="text-xs text-slate-400 font-bold flex justify-between">총 상금 (Total Prize) <span className="text-emerald-500">{isAutoPrize ? '⚡ Auto Mode' : '✏️ Manual Mode'}</span></label>
-                   <input type="number" value={inputTotalPrize} onChange={e=>{setInputTotalPrize(Number(e.target.value)); setIsAutoPrize(true);}} className="bg-slate-950 p-4 rounded-xl w-full border border-emerald-600 text-emerald-400 font-bold text-lg text-right"/>
-                </div>
-              </div>
-
-              <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[{l:'1st Place (50%)',k:'first',c:'text-yellow-400'},{l:'2nd Place (30%)',k:'second',c:'text-slate-300'},{l:'3rd Place (10%)',k:'third',c:'text-orange-400'},{l:'Top Scorer (10%)',k:'scorer',c:'text-blue-400'}].map((p:any) => (
-                  <div key={p.k} className="space-y-1">
-                    <label className={`text-[10px] font-bold ${p.c}`}>{p.l}</label>
-                    <input type="number" value={(prizes as any)[p.k]} onChange={e=>{setPrizes({...prizes, [p.k]:Number(e.target.value)}); setIsAutoPrize(false);}} className="bg-slate-900 p-3 rounded-lg w-full border border-slate-700 text-white text-right text-sm"/>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-4 pt-4">
-                <div className="flex-1 flex gap-2">
-                  <select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded-xl w-full border border-slate-800 text-sm"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>
-                  {inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded-xl w-full border border-slate-800 text-sm"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}
-                </div>
-                <button onClick={handleCreateSeason} className="flex-1 bg-emerald-600 py-3 rounded-xl font-bold text-white hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20">🏆 시즌 생성하기</button>
-              </div>
-            </div>)}
+            {adminTab === 'NEW' && (<div className="bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 space-y-6"><h3 className="text-emerald-400 font-bold">새로운 시즌 만들기</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="시즌 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="LEAGUE">리그</option><option value="TOURNAMENT">토너먼트</option></select>{inputSeasonType==='LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-950 p-3 rounded w-full border border-slate-800"><option value="SINGLE">싱글</option><option value="DOUBLE">홈&어웨이</option></select>}</div></div><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-3 rounded font-bold">시즌 생성하기</button></div>)}
             {adminTab === 'OWNER' && (<div className="bg-slate-900/60 p-8 rounded-3xl border border-purple-500/30 space-y-4"><h3 className="text-purple-400 font-bold">오너 관리</h3><div className="flex gap-4 flex-col md:flex-row"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="닉네임" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="이미지 URL" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/><button onClick={handleSaveOwner} className="bg-blue-600 px-6 py-3 rounded font-bold">{editOwnerId?'UPDATE':'ADD'}</button>{editOwnerId && <button onClick={()=>{setEditOwnerId(null); setNewOwnerName('');}} className="bg-slate-700 px-6 rounded">CANCEL</button>}</div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">{owners.map(o => (<div key={o.id} onClick={() => handleEditOwnerClick(o)} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center gap-4 cursor-pointer hover:border-blue-500"><img src={o.photo} alt={o.nickname} className="w-12 h-12 rounded-full border-2 border-slate-700" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/><span className="text-sm">{o.nickname}</span></div>))}</div></div>)}
           </div>
         )}
