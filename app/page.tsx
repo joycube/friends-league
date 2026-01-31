@@ -115,7 +115,7 @@ export default function FootballLeagueApp() {
   const [leagueCategory, setLeagueCategory] = useState<'CLUB' | 'NATIONAL'>('CLUB');
   const [editLeagueId, setEditLeagueId] = useState<string | null>(null);
   
-  // 🔥 [New] To track renaming of unregistered regions
+  // To track renaming of unregistered regions
   const [tempRegionName, setTempRegionName] = useState<string | null>(null);
   
   const leagueFormRef = useRef<HTMLDivElement>(null);
@@ -321,7 +321,7 @@ export default function FootballLeagueApp() {
     setLeagueName(name);
     setLeagueLogo('');
     setLeagueCategory(leagueManageTab);
-    setTempRegionName(name); // 🔥 Remember original region name
+    setTempRegionName(name); 
     leagueFormRef.current?.scrollIntoView({behavior:'smooth'});
   };
 
@@ -449,7 +449,6 @@ export default function FootballLeagueApp() {
   const leagueAdminRegisteredLeagues = leagues.filter(l => l.category === leagueManageTab);
   const leagueAdminRegisteredNames = leagueAdminRegisteredLeagues.map(l => l.name);
   const suggestedRegions = leagueAdminExistingRegions.filter(r => !leagueAdminRegisteredNames.includes(r) && r !== '무소속').sort();
-  // 🔥 [Fix] Display logic for preview teams in League Edit
   const teamsInEditLeague = (editLeagueId || leagueName) ? masterTeams.filter(t => t.region === leagueName) : [];
 
   // Team Management Logic
@@ -479,7 +478,7 @@ export default function FootballLeagueApp() {
     setManageRegion('ALL');
     setManageTier('ALL');
     setManageSearch('');
-    setSelectedLeagueForFilter(null);
+    setEditTeamId(null);
   };
 
   const showGrid = manageRegion === 'ALL' && manageSearch === '' && manageTier === 'ALL';
@@ -496,7 +495,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_76_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_79_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -574,10 +573,10 @@ export default function FootballLeagueApp() {
                   </div>
                   
                   <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                    <p className="text-xs text-slate-500 mb-2 font-bold">'{leagueName || '선택된 리그'}' 소속 팀 ({teamsInEditLeague.length})</p>
+                    <p className="text-xs text-slate-500 mb-2 font-bold">&apos;{leagueName || '선택된 리그'}&apos; 소속 팀 ({teamsInEditLeague.length})</p>
                     <div className="flex flex-wrap gap-2 max-h-[60px] overflow-y-auto pr-1">
                       {teamsInEditLeague.length > 0 ? teamsInEditLeague.map(t => (
-                        <span key={t.id} className="bg-slate-900 px-2 py-1 rounded border border-slate-700 text-[10px] flex items-center gap-1">
+                        <span key={t.id} className="bg-slate-950 px-2 py-1 rounded border border-slate-700 text-[10px] flex items-center gap-1">
                           <img src={t.logo} alt={t.name} className="w-3 h-3 object-contain" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/> {t.name}
                         </span>
                       )) : <span className="text-[10px] text-slate-600">-</span>}
