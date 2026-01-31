@@ -540,7 +540,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_83_Master</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_84_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -579,7 +579,7 @@ export default function FootballLeagueApp() {
               <h3 className="text-lg font-bold text-purple-400 mb-2">1. 오너 만들기</h3>
               <p className="text-sm mb-2">게임을 즐길 플레이어(Owner)를 등록하는 단계입니다.</p>
               <ul className="list-disc pl-5 text-xs space-y-1">
-                <li>[ADMIN > 오너 관리] 탭에서 등록합니다.</li>
+                <li>[ADMIN &gt; 오너 관리] 탭에서 등록합니다.</li>
                 <li>오너 이름과 프로필 이미지 URL을 입력하세요.</li>
                 <li>이미 등록된 오너는 리스트에서 클릭하여 수정할 수 있습니다.</li>
               </ul>
@@ -589,9 +589,9 @@ export default function FootballLeagueApp() {
               <h3 className="text-lg font-bold text-blue-400 mb-2">2. 팀 & 리그 관리</h3>
               <p className="text-sm mb-2">실제 축구 팀과 리그 데이터를 구축하는 단계입니다.</p>
               <ul className="list-disc pl-5 text-xs space-y-1">
-                <li>[ADMIN > 리그 관리]에서 리그(예: Premier League)를 먼저 만듭니다. 로고 URL 필수!</li>
-                <li>[ADMIN > 팀 관리]에서 팀을 등록합니다. '등급 스피드 모드'를 쓰면 빠르게 등급을 매길 수 있습니다.</li>
-                <li>미등록 지역(텍스트로만 존재하는 리그)은 리그 관리 탭에서 '🔔 미등록 지역 발견' 알림을 통해 정식 리그로 승격시킬 수 있습니다.</li>
+                <li>[ADMIN &gt; 리그 관리]에서 리그(예: Premier League)를 먼저 만듭니다. 로고 URL 필수!</li>
+                <li>[ADMIN &gt; 팀 관리]에서 팀을 등록합니다. &apos;등급 스피드 모드&apos;를 쓰면 빠르게 등급을 매길 수 있습니다.</li>
+                <li>미등록 지역(텍스트로만 존재하는 리그)은 리그 관리 탭에서 &apos;🔔 미등록 지역 발견&apos; 알림을 통해 정식 리그로 승격시킬 수 있습니다.</li>
               </ul>
             </section>
 
@@ -599,10 +599,10 @@ export default function FootballLeagueApp() {
               <h3 className="text-lg font-bold text-emerald-400 mb-2">3. 게임 생성 & 상금</h3>
               <p className="text-sm mb-2">새로운 시즌이나 토너먼트를 시작합니다.</p>
               <ul className="list-disc pl-5 text-xs space-y-1">
-                <li>[ADMIN > 새로운 게임 만들기]에서 시즌 이름을 입력하고 '총 상금'을 설정합니다.</li>
+                <li>[ADMIN &gt; 새로운 게임 만들기]에서 시즌 이름을 입력하고 &apos;총 상금&apos;을 설정합니다.</li>
                 <li>상금은 1등(50%), 2등(30%), 3등(10%), 득점왕(10%) 비율로 자동 계산됩니다.</li>
                 <li>게임 생성 후 [팀 배정] 탭으로 이동하여 참가할 팀을 드래프트하거나 랜덤으로 뽑습니다.</li>
-                <li>팀 배정이 끝나면 '📅 스케줄 만들기' 버튼을 눌러 대진표를 짭니다.</li>
+                <li>팀 배정이 끝나면 &apos;📅 스케줄 만들기&apos; 버튼을 눌러 대진표를 짭니다.</li>
               </ul>
             </section>
 
