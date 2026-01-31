@@ -124,6 +124,8 @@ export default function FootballLeagueApp() {
   const [leagueLogo, setLeagueLogo] = useState('');
   const [leagueCategory, setLeagueCategory] = useState<'CLUB' | 'NATIONAL'>('CLUB');
   const [editLeagueId, setEditLeagueId] = useState<string | null>(null);
+  
+  // To track renaming of unregistered regions
   const [tempRegionName, setTempRegionName] = useState<string | null>(null);
   
   const leagueFormRef = useRef<HTMLDivElement>(null);
@@ -525,7 +527,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_81_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_82_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -666,7 +668,13 @@ export default function FootballLeagueApp() {
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                             {leagueTeams.slice(0, visibleTeamCount).map(mt => (
-                              <div key={mt.id} onClick={() => !isTierEditMode && setEditTeamId(mt.id!) && setManualTeam(mt) && manualFormRef.current?.scrollIntoView({behavior:'smooth'})} className={`bg-slate-950 p-4 rounded-xl border ${isTierEditMode ? 'border-purple-500/50' : 'border-slate-800'} flex flex-col items-center gap-2 relative group cursor-pointer hover:border-blue-500 transition-all`}>
+                              <div key={mt.id} onClick={() => {
+                                if (!isTierEditMode) {
+                                  setEditTeamId(mt.id!);
+                                  setManualTeam(mt);
+                                  manualFormRef.current?.scrollIntoView({behavior:'smooth'});
+                                }
+                              }} className={`bg-slate-950 p-4 rounded-xl border ${isTierEditMode ? 'border-purple-500/50' : 'border-slate-800'} flex flex-col items-center gap-2 relative group cursor-pointer hover:border-blue-500 transition-all`}>
                                 <img src={mt.logo} alt={mt.name} className="w-10 h-10 object-contain bg-white rounded-full p-1" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                 <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
                                 
