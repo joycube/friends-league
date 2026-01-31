@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase'; 
-import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, setDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, setDoc, getDocs, writeBatch, where } from 'firebase/firestore';
 
 // --- 인터페이스 ---
 interface Season { 
@@ -26,6 +26,14 @@ interface Match {
 interface Round { round: number; matches: Match[]; seasonId: number; name?: string; }
 interface Banner { id?: string; title: string; url: string; order: number; }
 
+// --- [상수] 기본 데이터 ---
+const DEFAULT_LEAGUES = [
+  "무소속",
+  "Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1", 
+  "K League", "J League", "MLS", "Saudi Pro League",
+  "Asia/Oceania", "Europe", "South America", "North America", "Africa", "Others"
+];
+
 // --- [Helper Functions] ---
 const getBannerContent = (b: Banner) => {
   if(b.url.includes('youtube') || b.url.includes('youtu.be')) {
@@ -36,39 +44,16 @@ const getBannerContent = (b: Banner) => {
 };
 
 const getSortedTeamsLogic = (teams: MasterTeam[], tab: string, tier: string, region: string, search: string) => {
-  const POPULAR_LEAGUES = ["Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1", "K League", "J League", "MLS", "Saudi Pro League"];
-  
+  // 1. Filter
   const base = teams.filter(t => 
     (tab === 'ALL' || t.category === tab) && 
     (tier === 'ALL' || t.tier === tier) && 
     (region === 'ALL' || t.region === region) && 
     t.name.toLowerCase().includes(search.toLowerCase())
   );
-  
-  return base.sort((a, b) => {
-    if (a.category !== b.category) return a.category === 'CLUB' ? -1 : 1;
-    if (a.category === 'CLUB') {
-      const idxA = POPULAR_LEAGUES.indexOf(a.region);
-      const idxB = POPULAR_LEAGUES.indexOf(b.region);
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-      if (idxA !== -1) return -1;
-      if (idxB !== -1) return 1;
-    }
-    if (a.category === 'NATIONAL' && a.region !== b.region) {
-      const regA = (a.region === 'Asia' || a.region === 'Oceania') ? 'Asia/Oceania' : a.region;
-      const regB = (b.region === 'Asia' || b.region === 'Oceania') ? 'Asia/Oceania' : b.region;
-      return regA.localeCompare(regB);
-    }
-    return a.name.localeCompare(b.name);
-  });
+  // 2. Sort by Name
+  return base.sort((a, b) => a.name.localeCompare(b.name));
 };
-
-const getUniqueRegionsLogic = (teams: MasterTeam[], tab: string) => {
-  const targetTeams = tab === 'ALL' ? teams : teams.filter(t => t.category === tab);
-  return Array.from(new Set(targetTeams.map(t => t.region))).sort();
-};
-
-const REGION_OPTIONS = ["Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1", "K League", "J League", "MLS", "Saudi Pro League", "Asia/Oceania", "Europe", "South America", "North America", "Africa", "Others"];
 
 // --- [Component] RecordInput ---
 const RecordInput = ({ type, inputValue, onInputChange, onAdd, onRemove, records, label, colorClass }: any) => {
@@ -128,10 +113,13 @@ export default function FootballLeagueApp() {
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
 
-  // League Input
+  // League Management State
+  const [leagueManageTab, setLeagueManageTab] = useState<'CLUB' | 'NATIONAL'>('CLUB');
   const [leagueName, setLeagueName] = useState('');
   const [leagueLogo, setLeagueLogo] = useState('');
   const [leagueCategory, setLeagueCategory] = useState<'CLUB' | 'NATIONAL'>('CLUB');
+  const [editLeagueId, setEditLeagueId] = useState<string | null>(null);
+
   const [bannerTitle, setBannerTitle] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
 
@@ -142,11 +130,11 @@ export default function FootballLeagueApp() {
   const [selRegion, setSelRegion] = useState<string>('ALL');
   const [selTeamName, setSelTeamName] = useState<string>('');
 
-  const [manageTab, setManageTab] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL');
+  // Manage State
+  const [manageTab, setManageTab] = useState<'CLUB' | 'NATIONAL'>('CLUB');
   const [manageTier, setManageTier] = useState('ALL');
   const [manageRegion, setManageRegion] = useState('ALL');
   const [manageSearch, setManageSearch] = useState('');
-  const [selectedLeagueForFilter, setSelectedLeagueForFilter] = useState<string | null>(null);
   
   const [editTeamId, setEditTeamId] = useState<string | null>(null);
   const [manualTeam, setManualTeam] = useState<MasterTeam>({ name: '', logo: '', category: 'CLUB', region: '', tier: 'A' });
@@ -203,6 +191,7 @@ export default function FootballLeagueApp() {
     return () => { u1(); u2(); u3(); u4(); u5(); };
   }, []);
 
+  // --- [Main Ranking Logic] ---
   const activeRankingData = useMemo(() => {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
     if(!targetSeason?.teams) return { teams: [], owners: [], players: [], highlights: [] };
@@ -254,23 +243,71 @@ export default function FootballLeagueApp() {
     return { teams: Array.from(tMap.values()), owners: Array.from(oMap.values()), players: Array.from(pMap.values()) };
   }, [seasons]);
 
-  // --- Handlers (Defined HERE to avoid Scope/Reference Errors) ---
+  // --- Handlers ---
   const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
-  
-  // 🔥 [Fix] Missing Function: handleEditOwnerClick
   const handleEditOwnerClick = (o: Owner) => { setEditOwnerId(o.docId!); setNewOwnerName(o.nickname); setNewOwnerPhoto(o.photo); };
   
   const handleCreateSeason = async () => { if(inputSeasonName) { const id=Date.now(); await setDoc(doc(db,"seasons",String(id)),{id,name:inputSeasonName,type:inputSeasonType,leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE',isActive:true,teams:[],rounds:[],prizes:{total:inputTotalPrize,...prizes}}); setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); }};
   const handleDeleteSeason = async () => { if(typeof adminTab==='number' && confirm("삭제?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); }};
   const handleSaveBanner = async () => { if(bannerTitle && bannerUrl) { await addDoc(collection(db,"banners"),{title:bannerTitle,url:bannerUrl,order:Date.now()}); setBannerTitle(''); setBannerUrl(''); }};
   const handleDeleteBanner = async (id:string) => { if(confirm("삭제?")) await deleteDoc(doc(db,"banners",id)); };
-  const handleSaveLeague = async () => { if(leagueName && leagueLogo) { await addDoc(collection(db,"leagues"),{name:leagueName,logo:leagueLogo,category:leagueCategory}); setLeagueName(''); setLeagueLogo(''); }};
-  const handleDeleteLeague = async (id:string) => { if(confirm("삭제?")) await deleteDoc(doc(db,"leagues",id)); };
-  const handleSaveMaster = async () => { if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam as any); else await addDoc(collection(db,"master_teams"), manualTeam); setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); };
+  
+  // League Handlers
+  const handleSaveLeague = async () => { 
+    if(!leagueName || !leagueLogo) return alert("입력하세요");
+    if(editLeagueId) {
+      const oldLeague = leagues.find(l => l.id === editLeagueId);
+      if(oldLeague && oldLeague.name !== leagueName) {
+        if(confirm(`리그명을 변경하시겠습니까? 소속된 팀들의 정보도 함께 변경됩니다.`)) {
+           const batch = writeBatch(db);
+           masterTeams.filter(t => t.region === oldLeague.name).forEach(t => {
+             batch.update(doc(db, "master_teams", t.id!), { region: leagueName });
+           });
+           await batch.commit();
+        }
+      }
+      await updateDoc(doc(db, "leagues", editLeagueId), { name: leagueName, logo: leagueLogo, category: leagueCategory });
+      setEditLeagueId(null);
+    } else {
+      await addDoc(collection(db, "leagues"), {name:leagueName,logo:leagueLogo,category:leagueCategory}); 
+    }
+    setLeagueName(''); setLeagueLogo('');
+  };
+
+  const handleDeleteLeague = async (l: League) => { 
+    if(confirm(`'${l.name}' 리그를 삭제하시겠습니까?\n소속된 팀들은 '무소속'으로 변경됩니다.`)) {
+      const batch = writeBatch(db);
+      masterTeams.filter(t => t.region === l.name).forEach(t => {
+        batch.update(doc(db, "master_teams", t.id!), { region: '무소속' });
+      });
+      await batch.commit();
+      await deleteDoc(doc(db, "leagues", l.id!));
+    } 
+  };
+
+  const handleLeagueSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = e.target.value;
+    if(selectedId === 'NEW') {
+      setEditLeagueId(null); setLeagueName(''); setLeagueLogo('');
+    } else {
+      const l = leagues.find(x => x.id === selectedId);
+      if(l) {
+        setEditLeagueId(l.id!); setLeagueName(l.name); setLeagueLogo(l.logo); setLeagueCategory(l.category);
+      }
+    }
+  };
+
+  // Team Handlers
+  const handleSaveMaster = async () => { 
+    if(editTeamId) await updateDoc(doc(db,"master_teams",editTeamId), manualTeam as any); 
+    else await addDoc(collection(db,"master_teams"), manualTeam); 
+    setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); 
+  };
   const handleDeleteMasterTeam = async (id:string) => { if(confirm("삭제?")) await deleteDoc(doc(db,"master_teams",id)); };
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{...i}); setBulkInput(''); } catch {} };
   const handleInitCreateTeam = () => { setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); };
 
+  // Team Assignment Handlers
   const recordActiveS = seasons.find(s => s.id === adminTab);
   const handleConfirmTeam = async () => {
     if(selOwnerId && selTeamName) {
@@ -335,7 +372,6 @@ export default function FootballLeagueApp() {
     }
   };
 
-  // 🔥 [Fix] Missing Functions: handleRecordAdd / handleRecordRemove
   const handleRecordAdd = (type: string) => {
     if(!editingMatch) return;
     const k = type as keyof typeof recordInputs;
@@ -377,23 +413,66 @@ export default function FootballLeagueApp() {
   };
 
   // Variables for View
-  const targetLeagues = leagues.filter(l => l.category === manageTab);
-  const teamsInSelectedLeague = selectedLeagueForFilter ? masterTeams.filter(t => t.region === selectedLeagueForFilter && t.name.toLowerCase().includes(manageSearch.toLowerCase())) : [];
-  const teamsInSearch = manageSearch ? masterTeams.filter(t => t.name.toLowerCase().includes(manageSearch.toLowerCase())) : [];
+  // 🔥 [Fix] Define variables strictly before return to avoid 'filter is not a function'
+  const targetTeamsBase = masterTeams.filter(t => t.category === manageTab);
   
-  // Safe filtering for assignment
-  const assignmentTeams = getSortedTeamsLogic(
-    masterTeams.filter(t => !(recordActiveS?.teams || []).map(at => at.name).includes(t.name)),
-    selCategory, selTier, selRegion, ''
+  // 1. Get ALL unique regions from TEAMS (to ensure we show groups even without registered leagues)
+  const existingTeamRegions = Array.from(new Set(targetTeamsBase.map(t => t.region)));
+  
+  // 2. Get registered leagues matching the category
+  const registeredLeagues = leagues.filter(l => l.category === manageTab);
+  const registeredLeagueNames = registeredLeagues.map(l => l.name);
+
+  // 3. Merge unique region names
+  const allUniqueRegions = Array.from(new Set([...registeredLeagueNames, ...existingTeamRegions, '무소속'])).sort();
+
+  // 4. Construct Group Data
+  const groupData = allUniqueRegions.map(regionName => {
+    const registeredLeague = leagues.find(l => l.name === regionName);
+    return {
+      name: regionName,
+      logo: registeredLeague?.logo || 'https://www.konami.com/efootball/s/img/main_page_1.png?v=903', 
+      count: targetTeamsBase.filter(t => t.region === regionName).length
+    };
+  }).filter(g => g.name !== '' && (g.count > 0 || registeredLeagueNames.includes(g.name))); 
+  // Show if: (It has teams) OR (It is a registered league, even if empty)
+
+  const teamsToDisplay = targetTeamsBase.filter(t => 
+    (manageRegion === 'ALL' || t.region === manageRegion) &&
+    (manageTier === 'ALL' || t.tier === manageTier) &&
+    t.name.toLowerCase().includes(manageSearch.toLowerCase())
   );
   
-  const assignmentRegions = getUniqueRegionsLogic(masterTeams.filter(t => !(recordActiveS?.teams || []).map(at => at.name).includes(t.name)), selCategory);
+  // Filtered List for Display
+  const filteredTeams = getSortedTeamsLogic(teamsToDisplay, '', '', '', '');
+
+  const resetFilters = () => {
+    setManageRegion('ALL');
+    setManageTier('ALL');
+    setManageSearch('');
+    setSelectedLeagueForFilter(null);
+  };
+
+  // Logic to display Grid vs List in Team Management
+  const showGrid = manageRegion === 'ALL' && manageSearch === '' && manageTier === 'ALL';
+  const groupsToRender = manageRegion === 'ALL' ? groupData : groupData.filter(g => g.name === manageRegion);
+
+  // Filtered Teams for League Management (Preview)
+  const teamsInEditLeague = editLeagueId ? masterTeams.filter(t => t.region === leagueName) : [];
+
+  const assignmentTeams = getSortedTeamsLogic(
+    masterTeams.filter(t => !(recordActiveS?.teams || []).map(at => at.name).includes(t.name) && (selCategory==='ALL' || t.category===selCategory) && (selTier==='ALL' || t.tier===selTier) && (selRegion==='ALL' || t.region===selRegion)),
+    '', '', '', ''
+  );
+  
+  const assignmentRegions = Array.from(new Set(masterTeams.filter(t => selCategory==='ALL' || t.category===selCategory).map(t => t.region))).sort();
+
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_57</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_71</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -435,14 +514,51 @@ export default function FootballLeagueApp() {
             {adminTab === 'LEAGUES' && (
               <div className="bg-slate-900/60 p-8 rounded-3xl border border-yellow-500/30 space-y-4">
                 <h3 className="text-yellow-400 font-bold">리그/지역 관리</h3>
-                <div className="flex gap-4 flex-col md:flex-row">
-                  <input value={leagueName} onChange={e=>setLeagueName(e.target.value)} placeholder="리그 이름" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/>
-                  <input value={leagueLogo} onChange={e=>setLeagueLogo(e.target.value)} placeholder="로고 URL" className="bg-slate-950 p-3 rounded w-full border border-slate-800"/>
-                  <select value={leagueCategory} onChange={e=>setLeagueCategory(e.target.value as any)} className="bg-slate-950 p-3 rounded border border-slate-800"><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select>
-                  <button onClick={handleSaveLeague} className="bg-yellow-600 text-black px-6 py-3 rounded font-bold whitespace-nowrap">등록</button>
+                
+                {/* 🔥 [New] Toggle for League Admin */}
+                <div className="flex gap-2 mb-4">
+                  <button onClick={() => setLeagueManageTab('CLUB')} className={`px-6 py-2 rounded-full text-xs font-bold ${leagueManageTab==='CLUB'?'bg-yellow-600 text-black':'bg-slate-800 text-slate-500'}`}>🏢 CLUB</button>
+                  <button onClick={() => setLeagueManageTab('NATIONAL')} className={`px-6 py-2 rounded-full text-xs font-bold ${leagueManageTab==='NATIONAL'?'bg-red-600 text-white':'bg-slate-800 text-slate-500'}`}>🏳️ NATIONAL</button>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                  {leagues.map(l => (<div key={l.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 relative group"><img src={l.logo} className="w-12 h-12 object-contain bg-white rounded-full p-1" /><span className="text-xs font-bold text-center">{l.name}</span><button onClick={() => handleDeleteLeague(l.id!)} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100">×</button></div>))}
+
+                <div className="flex gap-4 flex-col md:flex-row items-center bg-slate-950/50 p-4 rounded-2xl border border-slate-800">
+                  {/* 🔥 [New] Combo Box for Selecting League to Edit */}
+                  <select onChange={handleLeagueSelect} value={editLeagueId || 'NEW'} className="bg-slate-950 p-3 rounded w-full md:w-48 border border-slate-700 text-sm">
+                    <option value="NEW">✨ 새로운 리그 등록</option>
+                    <optgroup label="등록된 리그">
+                      {leagues.filter(l => l.category === leagueManageTab).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </optgroup>
+                  </select>
+
+                  <div className="flex-1 flex gap-2 w-full">
+                     <input value={leagueName} onChange={e=>setLeagueName(e.target.value)} placeholder="리그 이름 (예: Premier League)" className="bg-slate-950 p-3 rounded w-full border border-slate-800 text-sm"/>
+                     <input value={leagueLogo} onChange={e=>setLeagueLogo(e.target.value)} placeholder="로고 URL" className="bg-slate-950 p-3 rounded w-full border border-slate-800 text-sm"/>
+                  </div>
+                  <button onClick={handleSaveLeague} className="bg-yellow-600 text-black px-6 py-3 rounded font-bold whitespace-nowrap text-sm">{editLeagueId ? '수정 저장' : '새로 등록'}</button>
+                </div>
+
+                {/* 🔥 [New] Show Teams in Selected League (Preview) */}
+                {editLeagueId && (
+                  <div className="mt-4 p-4 bg-slate-950 rounded-xl border border-slate-800">
+                    <p className="text-xs text-slate-500 mb-2 font-bold">소속된 팀 목록 ({teamsInEditLeague.length})</p>
+                    <div className="flex flex-wrap gap-2">
+                      {teamsInEditLeague.length > 0 ? teamsInEditLeague.map(t => (
+                        <span key={t.id} className="bg-slate-900 px-3 py-1 rounded border border-slate-800 text-xs flex items-center gap-1">
+                          <img src={t.logo} className="w-4 h-4 object-contain"/> {t.name}
+                        </span>
+                      )) : <span className="text-xs text-slate-600">소속된 팀이 없습니다.</span>}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mt-6">
+                  {leagues.filter(l => l.category === leagueManageTab).map(l => (
+                    <div key={l.id} onClick={() => handleEditLeagueClick(l)} className={`bg-slate-950 p-4 rounded-xl border ${editLeagueId===l.id ? 'border-yellow-500 bg-yellow-900/10' : 'border-slate-800'} flex flex-col items-center gap-2 relative group cursor-pointer hover:border-yellow-500`}>
+                      <img src={l.logo} className="w-10 h-10 object-contain bg-white rounded-full p-1" />
+                      <span className="text-[10px] font-bold text-center">{l.name}</span>
+                      <button onClick={(e) => {e.stopPropagation(); handleDeleteLeague(l);}} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100">×</button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -452,37 +568,63 @@ export default function FootballLeagueApp() {
                 <div className="flex justify-between items-center mb-4 px-2"><h3 className="text-lg font-bold italic text-slate-400">TEAM MANAGEMENT</h3><button onClick={handleInitCreateTeam} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">➕ 새로운 팀 등록하기</button></div>
                 <div className="bg-slate-900/60 p-4 rounded-3xl border border-slate-800 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
                   <div className="flex gap-2">
-                    <button onClick={() => { setManageTab('CLUB'); setSelectedLeagueForFilter(null); }} className={`px-6 py-2 rounded-full text-xs font-bold ${manageTab==='CLUB'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>🏢 CLUB</button>
-                    <button onClick={() => { setManageTab('NATIONAL'); setSelectedLeagueForFilter(null); }} className={`px-6 py-2 rounded-full text-xs font-bold ${manageTab==='NATIONAL'?'bg-red-600 text-white':'bg-slate-800 text-slate-500'}`}>🏳️ NATIONAL</button>
+                    <button onClick={() => { setManageTab('CLUB'); resetFilters(); }} className={`px-6 py-2 rounded-full text-xs font-bold ${manageTab==='CLUB'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>🏢 CLUB</button>
+                    <button onClick={() => { setManageTab('NATIONAL'); resetFilters(); }} className={`px-6 py-2 rounded-full text-xs font-bold ${manageTab==='NATIONAL'?'bg-red-600 text-white':'bg-slate-800 text-slate-500'}`}>🏳️ NATIONAL</button>
                   </div>
-                  <input value={manageSearch} onChange={e=>setManageSearch(e.target.value)} placeholder="팀 이름 검색..." className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-700 text-xs w-full md:w-64"/>
+                  <div className="flex gap-2 flex-1 w-full justify-end">
+                    <select value={manageTier} onChange={e => setManageTier(e.target.value)} className="bg-slate-950 p-2 rounded-xl border border-slate-700 text-xs"><option value="ALL">등급 전체</option><option value="S">S등급</option><option value="A">A등급</option><option value="B">B등급</option><option value="C">C등급</option></select>
+                    {/* 🔥 [Fix] Dropdown updates Grid/List */}
+                    <select value={manageRegion} onChange={e => setManageRegion(e.target.value)} className="bg-slate-950 p-2 rounded-xl border border-slate-700 text-xs w-32"><option value="ALL">리그 전체</option>{groupData.map((g,i)=><option key={i} value={g.name}>{g.name}</option>)}</select>
+                    <input value={manageSearch} onChange={e=>setManageSearch(e.target.value)} placeholder="팀 이름 검색..." className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-700 text-xs w-full md:w-48"/>
+                  </div>
                 </div>
-                {!selectedLeagueForFilter && !manageSearch && (
+
+                {/* 🔥 [Updated] Grouped List View */}
+                {showGrid ? (
                   <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-8">
-                    {targetLeagues.map(l => (<div key={l.id} onClick={() => setSelectedLeagueForFilter(l.name)} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 hover:bg-slate-800 transition-all"><img src={l.logo} className="w-10 h-10 object-contain bg-white rounded-full p-1"/><span className="text-[10px] font-bold text-center leading-tight">{l.name}</span></div>))}
+                    {groupData.map((l, idx) => (<div key={idx} onClick={() => setManageRegion(l.name)} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 hover:bg-slate-800 transition-all"><img src={l.logo} className="w-10 h-10 object-contain bg-white rounded-full p-1"/><span className="text-[10px] font-bold text-center leading-tight">{l.name}</span><span className="text-[8px] text-slate-500">({l.count})</span></div>))}
                   </div>
-                )}
-                {(selectedLeagueForFilter || manageSearch) && (
-                  <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800">
-                    <div className="flex justify-between items-center mb-4"><h4 className="text-blue-400 font-bold">{selectedLeagueForFilter || '검색 결과'}</h4>{selectedLeagueForFilter && <button onClick={() => setSelectedLeagueForFilter(null)} className="text-xs text-slate-400 underline">전체 리그 보기</button>}</div>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                      {(manageSearch ? teamsInSearch : teamsInSelectedLeague).map(mt => (
-                        <div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all relative group">
-                          <img src={mt.logo} className="w-10 h-10 object-contain bg-white rounded-full p-1" />
-                          <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
-                          <p className="text-[9px] text-slate-500 truncate w-full text-center">{mt.region} • {mt.tier}등급</p>
-                          <button onClick={(e) => {e.stopPropagation(); handleDeleteMasterTeam(mt.id!);}} className="absolute top-2 right-2 text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button>
+                ) : (
+                  <div className="space-y-6">
+                    {(manageSearch ? [{name:'검색 결과', logo:'', count:teamsToDisplay.length}] : groupsToRender).map((group, idx) => {
+                      const leagueTeams = manageSearch ? filteredTeams : filteredTeams.filter(t => t.region === group.name);
+                      if (leagueTeams.length === 0) return null;
+                      return (
+                        <div key={idx} className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800">
+                          <div className="flex items-center gap-3 mb-4 pb-2 border-b border-slate-800">
+                            {group.logo && <img src={group.logo} className="w-8 h-8 object-contain" />}
+                            <h4 className="text-blue-400 font-bold text-lg">{group.name} <span className="text-slate-500 text-xs ml-2">({leagueTeams.length})</span></h4>
+                            {manageRegion !== 'ALL' && idx === 0 && <button onClick={resetFilters} className="ml-auto text-xs text-slate-400 underline">전체 리그 보기</button>}
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                            {leagueTeams.slice(0, visibleTeamCount).map(mt => (
+                              <div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all relative group">
+                                <img src={mt.logo} className="w-10 h-10 object-contain bg-white rounded-full p-1" />
+                                <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
+                                <p className="text-[9px] text-slate-500 truncate w-full text-center">{mt.region} • {mt.tier}등급</p>
+                                <button onClick={(e) => {e.stopPropagation(); handleDeleteMasterTeam(mt.id!);}} className="absolute top-2 right-2 text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button>
+                              </div>
+                            ))}
+                          </div>
+                          {leagueTeams.length > visibleTeamCount && <button onClick={() => setVisibleTeamCount(prev => prev + 18)} className="w-full py-3 bg-slate-800 text-slate-400 font-bold text-xs rounded-xl hover:bg-slate-700 transition-colors mt-4">👇 더 보기</button>}
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
+                    {filteredTeams.length === 0 && <div className="text-center py-20 text-slate-500 font-bold">조건에 맞는 팀이 없습니다.</div>}
                   </div>
                 )}
+                
                 <section ref={manualFormRef} className="p-8 rounded-3xl border bg-slate-900/60 border-slate-800 mt-8">
                   <h3 className="text-xl mb-4 font-bold">{editTeamId ? '팀 수정하기' : '새로운 팀 등록'}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans not-italic mb-4">
                     <select value={manualTeam.category} onChange={e => setManualTeam({...manualTeam, category: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select>
                     <select value={manualTeam.tier} onChange={e => setManualTeam({...manualTeam, tier: e.target.value as any})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="S">S등급</option><option value="A">A등급</option><option value="B">B등급</option><option value="C">C등급</option></select>
-                    <select value={manualTeam.region} onChange={e => setManualTeam({...manualTeam, region: e.target.value})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm"><option value="">리그 선택</option>{leagues.filter(l=>l.category===manualTeam.category).map(l=><option key={l.id} value={l.name}>{l.name}</option>)}</select>
+                    {/* 🔥 [Fix] Fallback for Combobox */}
+                    <select value={manualTeam.region} onChange={e => setManualTeam({...manualTeam, region: e.target.value})} className="bg-slate-950 p-3 rounded border border-slate-700 text-sm">
+                      <option value="">리그/지역 선택</option>
+                      <optgroup label="등록된 리그">{leagues.filter(l=>l.category===manualTeam.category).map(l=><option key={l.id} value={l.name}>{l.name}</option>)}</optgroup>
+                      <optgroup label="기본 옵션">{DEFAULT_LEAGUES.map(r=><option key={r} value={r}>{r}</option>)}</optgroup>
+                    </select>
                     <input value={manualTeam.name} onChange={e => setManualTeam({...manualTeam, name: e.target.value})} placeholder="팀 이름" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" />
                     <input value={manualTeam.logo} onChange={e => setManualTeam({...manualTeam, logo: e.target.value})} placeholder="로고 URL" className="bg-slate-950 p-3 rounded border border-slate-700 text-sm" />
                   </div>
