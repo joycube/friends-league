@@ -439,7 +439,8 @@ export default function FootballLeagueApp() {
     t.name.toLowerCase().includes(manageSearch.toLowerCase())
   );
   
-  const filteredTeams = getSortedTeamsLogic(teamsToDisplay, '', '', '', '');
+  // 🔥 [Fix] Correct Usage of 2 args
+  const filteredTeams = getSortedTeamsLogic(teamsToDisplay, '');
 
   const resetFilters = () => {
     setManageRegion('ALL');
@@ -452,9 +453,10 @@ export default function FootballLeagueApp() {
 
   const teamsInEditLeague = editLeagueId ? masterTeams.filter(t => t.region === leagueName) : [];
 
+  // 🔥 [Fix] Correct Usage of 2 args for assignment
   const assignmentTeams = getSortedTeamsLogic(
     masterTeams.filter(t => !(recordActiveS?.teams || []).map(at => at.name).includes(t.name) && (selCategory==='ALL' || t.category===selCategory) && (selTier==='ALL' || t.tier===selTier) && (selRegion==='ALL' || t.region===selRegion)),
-    '', '', '', ''
+    ''
   );
   
   const assignmentRegions = Array.from(new Set(masterTeams.filter(t => selCategory==='ALL' || t.category===selCategory).map(t => t.region))).sort();
