@@ -50,6 +50,16 @@ const getSortedTeamsLogic = (teams: MasterTeam[], search: string) => {
   return base.sort((a, b) => a.name.localeCompare(b.name));
 };
 
+const getTierColor = (tier: string) => {
+  switch(tier) {
+    case 'S': return 'bg-purple-600 text-white border-purple-400';
+    case 'A': return 'bg-red-600 text-white border-red-400';
+    case 'B': return 'bg-blue-600 text-white border-blue-400';
+    case 'C': return 'bg-slate-600 text-slate-300 border-slate-500';
+    default: return 'bg-slate-800 text-slate-500';
+  }
+};
+
 // --- [Component] RecordInput ---
 const RecordInput = ({ type, inputValue, onInputChange, onAdd, onRemove, records, label, colorClass }: any) => {
   return (
@@ -114,8 +124,6 @@ export default function FootballLeagueApp() {
   const [leagueLogo, setLeagueLogo] = useState('');
   const [leagueCategory, setLeagueCategory] = useState<'CLUB' | 'NATIONAL'>('CLUB');
   const [editLeagueId, setEditLeagueId] = useState<string | null>(null);
-  
-  // To track renaming of unregistered regions
   const [tempRegionName, setTempRegionName] = useState<string | null>(null);
   
   const leagueFormRef = useRef<HTMLDivElement>(null);
@@ -135,6 +143,7 @@ export default function FootballLeagueApp() {
   const [manageTier, setManageTier] = useState('ALL');
   const [manageRegion, setManageRegion] = useState('ALL');
   const [manageSearch, setManageSearch] = useState('');
+  const [isTierEditMode, setIsTierEditMode] = useState(false); // Tier Speed Mode
   
   const [editTeamId, setEditTeamId] = useState<string | null>(null);
   const [manualTeam, setManualTeam] = useState<MasterTeam>({ name: '', logo: '', category: 'CLUB', region: '', tier: 'A' });
@@ -270,7 +279,6 @@ export default function FootballLeagueApp() {
     } else {
       await addDoc(collection(db, "leagues"), {name:leagueName,logo:leagueLogo,category:leagueCategory}); 
       
-      // 🔥 [Fix] Logic to update teams if a Suggestion was registered with a changed name
       if (tempRegionName && tempRegionName !== leagueName) {
          if(confirm(`기존 '${tempRegionName}' 소속 팀들을 새로운 리그 '${leagueName}'으로 이동시키겠습니까?`)) {
            const batch = writeBatch(db);
@@ -332,6 +340,30 @@ export default function FootballLeagueApp() {
     setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); 
   };
   const handleDeleteMasterTeam = async (id:string) => { if(confirm("삭제?")) await deleteDoc(doc(db,"master_teams",id)); };
+  
+  // 🔥 [New] Instant Tier Update
+  const handleQuickTierUpdate = async (teamId: string, newTier: any) => {
+    await updateDoc(doc(db, "master_teams", teamId), { tier: newTier });
+  };
+
+  // 🔥 [New] Reset All Tiers
+  const handleResetAllTiers = async () => {
+    if(!confirm("⚠️ 모든 팀을 C등급으로 초기화하시겠습니까?\n(미등록 리그 팀은 '무소속'으로 이동됩니다)")) return;
+    const batch = writeBatch(db);
+    const validRegions = leagues.map(l => l.name);
+    let count = 0;
+    masterTeams.forEach(t => {
+      const ref = doc(db, "master_teams", t.id!);
+      const isOrphan = !validRegions.includes(t.region) && t.region !== '무소속';
+      const updates: any = { tier: 'C' };
+      if(isOrphan) updates.region = '무소속';
+      batch.update(ref, updates);
+      count++;
+    });
+    await batch.commit();
+    alert(`완료! ${count}개 팀이 초기화되었습니다.`);
+  };
+
   const handleBulk = async () => { try { const d=JSON.parse(bulkInput); for(const i of d) await addDoc(collection(db,"master_teams"),{...i}); setBulkInput(''); } catch {} };
   const handleInitCreateTeam = () => { setEditTeamId(null); setManualTeam({name:'',logo:'',category:'CLUB',region:'',tier:'A'}); manualFormRef.current?.scrollIntoView({behavior:'smooth'}); };
 
@@ -440,10 +472,9 @@ export default function FootballLeagueApp() {
     }
   };
 
-  // Variables for View - Teams Management
+  // Variables for View
   const targetTeamsBase = masterTeams.filter(t => t.category === manageTab);
   
-  // Variables for View - League Management
   const leagueAdminTeams = masterTeams.filter(t => t.category === leagueManageTab);
   const leagueAdminExistingRegions = Array.from(new Set(leagueAdminTeams.map(t => t.region)));
   const leagueAdminRegisteredLeagues = leagues.filter(l => l.category === leagueManageTab);
@@ -451,7 +482,6 @@ export default function FootballLeagueApp() {
   const suggestedRegions = leagueAdminExistingRegions.filter(r => !leagueAdminRegisteredNames.includes(r) && r !== '무소속').sort();
   const teamsInEditLeague = (editLeagueId || leagueName) ? masterTeams.filter(t => t.region === leagueName) : [];
 
-  // Team Management Logic
   const existingTeamRegions = Array.from(new Set(targetTeamsBase.map(t => t.region)));
   const registeredLeagues = leagues.filter(l => l.category === manageTab);
   const registeredLeagueNames = registeredLeagues.map(l => l.name);
@@ -495,7 +525,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_79_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_81_Final</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
@@ -599,7 +629,13 @@ export default function FootballLeagueApp() {
             
             {adminTab === 'TEAMS' && (
               <>
-                <div className="flex justify-between items-center mb-4 px-2"><h3 className="text-lg font-bold italic text-slate-400">TEAM MANAGEMENT</h3><button onClick={handleInitCreateTeam} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">➕ 새로운 팀 등록하기</button></div>
+                <div className="flex justify-between items-center mb-4 px-2"><h3 className="text-lg font-bold italic text-slate-400">TEAM MANAGEMENT</h3>
+                  <div className="flex gap-2">
+                    <button onClick={handleResetAllTiers} className="bg-red-900/50 text-red-300 border border-red-800 px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-900 transition-colors">🔄 전체 C등급 초기화</button>
+                    <button onClick={() => setIsTierEditMode(!isTierEditMode)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors shadow-lg ${isTierEditMode ? 'bg-purple-600 text-white animate-pulse' : 'bg-slate-800 text-purple-400 border border-purple-900'}`}>⚡ 등급 스피드 모드</button>
+                    <button onClick={handleInitCreateTeam} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">➕ 새로운 팀 등록하기</button>
+                  </div>
+                </div>
                 <div className="bg-slate-900/60 p-4 rounded-3xl border border-slate-800 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
                   <div className="flex gap-2">
                     <button onClick={() => { setManageTab('CLUB'); resetFilters(); }} className={`px-6 py-2 rounded-full text-xs font-bold ${manageTab==='CLUB'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>🏢 CLUB</button>
@@ -607,13 +643,11 @@ export default function FootballLeagueApp() {
                   </div>
                   <div className="flex gap-2 flex-1 w-full justify-end">
                     <select value={manageTier} onChange={e => setManageTier(e.target.value)} className="bg-slate-950 p-2 rounded-xl border border-slate-700 text-xs"><option value="ALL">등급 전체</option><option value="S">S등급</option><option value="A">A등급</option><option value="B">B등급</option><option value="C">C등급</option></select>
-                    {/* 🔥 [Fix] Dropdown updates Grid/List */}
                     <select value={manageRegion} onChange={e => setManageRegion(e.target.value)} className="bg-slate-950 p-2 rounded-xl border border-slate-700 text-xs w-32"><option value="ALL">리그 전체</option>{groupData.map((g,i)=><option key={i} value={g.name}>{g.name}</option>)}</select>
                     <input value={manageSearch} onChange={e=>setManageSearch(e.target.value)} placeholder="팀 이름 검색..." className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-700 text-xs w-full md:w-48"/>
                   </div>
                 </div>
 
-                {/* 🔥 [Updated] Grouped List View */}
                 {showGrid ? (
                   <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-8">
                     {groupData.map((l, idx) => (<div key={idx} onClick={() => setManageRegion(l.name)} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 hover:bg-slate-800 transition-all"><img src={l.logo} alt={l.name} className="w-10 h-10 object-contain bg-white rounded-full p-1" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/><span className="text-[10px] font-bold text-center leading-tight">{l.name}</span><span className="text-[8px] text-slate-500">({l.count})</span></div>))}
@@ -632,11 +666,21 @@ export default function FootballLeagueApp() {
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                             {leagueTeams.slice(0, visibleTeamCount).map(mt => (
-                              <div key={mt.id} onClick={() => {setEditTeamId(mt.id!); setManualTeam(mt); manualFormRef.current?.scrollIntoView({behavior:'smooth'})}} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-2 cursor-pointer hover:border-blue-500 transition-all relative group">
+                              <div key={mt.id} onClick={() => !isTierEditMode && setEditTeamId(mt.id!) && setManualTeam(mt) && manualFormRef.current?.scrollIntoView({behavior:'smooth'})} className={`bg-slate-950 p-4 rounded-xl border ${isTierEditMode ? 'border-purple-500/50' : 'border-slate-800'} flex flex-col items-center gap-2 relative group cursor-pointer hover:border-blue-500 transition-all`}>
                                 <img src={mt.logo} alt={mt.name} className="w-10 h-10 object-contain bg-white rounded-full p-1" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                 <p className="text-[10px] font-bold truncate w-full text-center">{mt.name}</p>
-                                <p className="text-[9px] text-slate-500 truncate w-full text-center">{mt.region} • {mt.tier}등급</p>
-                                <button onClick={(e) => {e.stopPropagation(); handleDeleteMasterTeam(mt.id!);}} className="absolute top-2 right-2 text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button>
+                                
+                                {isTierEditMode ? (
+                                  <div className="flex gap-1 mt-1">
+                                    {['S','A','B','C'].map(t => (
+                                      <button key={t} onClick={(e) => { e.stopPropagation(); handleQuickTierUpdate(mt.id!, t); }} className={`w-5 h-5 text-[9px] font-bold rounded ${mt.tier===t ? getTierColor(t) : 'bg-slate-800 text-slate-500 border border-slate-700'}`}>{t}</button>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-[9px] text-slate-500 truncate w-full text-center">{mt.region} • <span className={`font-bold ${getTierColor(mt.tier).split(' ')[0].replace('bg-','text-')}`}>{mt.tier}등급</span></p>
+                                )}
+                                
+                                {!isTierEditMode && <button onClick={(e) => {e.stopPropagation(); handleDeleteMasterTeam(mt.id!);}} className="absolute top-2 right-2 text-red-500 font-bold opacity-0 group-hover:opacity-100">×</button>}
                               </div>
                             ))}
                           </div>
