@@ -47,7 +47,7 @@ export const AdminBannerManager = ({ banners }: Props) => {
     setEditId(b.id!);
     setTitle(b.title);
     setUrl(b.url);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // 상단으로 스크롤 이동하지 않도록 동작 수정 (팝업이나 모달 형태가 아니므로 자연스럽게)
   };
 
   const resetForm = () => {
@@ -115,6 +115,7 @@ export const AdminBannerManager = ({ banners }: Props) => {
               onClick={() => handleEditClick(b)} 
               className={`relative group cursor-pointer rounded-xl overflow-hidden border transition-all aspect-video ${editId === b.id ? 'border-orange-500 ring-2 ring-orange-500/30' : 'border-slate-800 hover:border-blue-500'}`}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
                 src={getThumbnail(b.url)} 
                 alt={b.title} 
