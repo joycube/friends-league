@@ -1,36 +1,51 @@
-import React from 'react';
-import './globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
 
-const inter = Inter({ subsets: ['latin'] })
-
+// 🔥 [Meta] Social Image & Favicon Setup
 export const metadata: Metadata = {
-  title: 'eFOOTBALL SUPER LEAGUE - 지금 e풋볼 리그에 도전하세요',
-  description: '지금 eFOOTBALL 리그에 참여하세요. 참여문의 joycube@gamil.com',
-  icons: {
-    // ?v=P41 을 붙여서 브라우저가 강제로 새 아이콘을 읽게 합니다.
-    icon: '/icon.webp?v=P41', 
-    shortcut: '/icon.webp?v=P41',
-    apple: '/icon.webp?v=P41', 
-  },
+  title: "eFootball™ Live evolution™",
+  description: "Join the League! eFootball Super League Management System.",
   openGraph: {
-    title: 'eFOOTBALL SUPER LEAGUE',
-    description: '지금 eFOOTBALL 리그에 참여하세요. 참여문의 joycube@gamil.com',
-    siteName: 'eFOOTBALL SUPER LEAGUE',
-    locale: 'ko_KR',
-    type: 'website',
+    title: "eFootball™ Live evolution™",
+    description: "eFootball 2025 기반 리그 매니지먼트 시스템",
+    url: "https://friends-league-iota.vercel.app/",
+    siteName: "eFootball Live Evolution",
+    images: [
+      {
+        url: "https://www.konami.com/efootball/s/img/main_page_1.png", // 요청하신 코나미 이미지
+        width: 1200,
+        height: 630,
+        alt: "eFootball Main",
+      },
+    ],
+    locale: "ko_KR",
+    type: "website",
   },
-}
+  icons: {
+    icon: "/icon.webp",       // public/icon.webp
+    shortcut: "/icon.webp",
+    apple: "/icon.webp",      // 모바일 홈 화면 추가 시 아이콘
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#020617",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="ko">
-      <body className={inter.className}>{children}</body>
+      <body className="antialiased bg-[#020617] text-white">
+        {children}
+      </body>
     </html>
-  )
+  );
 }

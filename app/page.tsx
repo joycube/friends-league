@@ -16,10 +16,10 @@ export default function FootballLeagueApp() {
   
   // Tabs
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'SCHEDULE' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
-  const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('TEAMS');
+  const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('OWNERS');
   const [adminTab, setAdminTab] = useState<number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS'>('NEW');
   
-  // Toggles (Rank & History)
+  // Toggles
   const [rankPlayerMode, setRankPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
   const [histPlayerMode, setHistPlayerMode] = useState<'GOAL' | 'ASSIST'>('GOAL');
 
@@ -74,19 +74,15 @@ export default function FootballLeagueApp() {
 
   useEffect(() => {
     if (banners.length === 0) return;
-    
     const sortedBanners = [...banners].sort((a,b) => {
         const aIsVid = a.url.includes('youtube') || a.url.includes('youtu.be');
         const bIsVid = b.url.includes('youtube') || b.url.includes('youtu.be');
         return (aIsVid === bIsVid) ? 0 : aIsVid ? -1 : 1;
     });
-
     const currentBanner = sortedBanners[bannerIdx % sortedBanners.length];
     if(!currentBanner) return;
-
     const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
     const delay = isVideo ? 15000 : 5000;
-
     const t = setTimeout(() => setBannerIdx((prev) => (prev + 1) % sortedBanners.length), delay);
     return () => clearTimeout(t);
   }, [bannerIdx, banners]);
@@ -124,7 +120,7 @@ export default function FootballLeagueApp() {
     });
   }, [banners]);
 
-  // --- Ranking Data ---
+  // --- Ranking Data (Logic A) ---
   const activeRankingData = useMemo(() => {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
     if(!targetSeason?.teams) return { teams: [], owners: [], players: [], highlights: [] };
@@ -146,7 +142,6 @@ export default function FootballLeagueApp() {
       }
     }));
 
-    // 🔥 [Fix] Prize Logic: Only assign if games played > 0
     const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((t, i) => {
         const played = t.win + t.draw + t.loss;
         let prize = 0;
@@ -174,9 +169,8 @@ export default function FootballLeagueApp() {
     return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players: Array.from(playerStats.values()).sort((a,b) => b.goals - a.goals || b.assists - a.assists), highlights };
   }, [seasons, viewSeasonId]);
 
-  // --- History Data ---
+  // 🔥 [Correction] History Logic matched exactly with Ranking Logic
   const historyData = useMemo(() => {
-      // 🔥 [Update] Added Awards tracking
       const ownerHist = new Map<string, any>(); 
       const teamHist = new Map<string, any>(); 
       const playerHist = new Map<string, any>();
@@ -184,39 +178,43 @@ export default function FootballLeagueApp() {
       seasons.forEach(s => {
           if(!s.teams) return;
           const sTeamStats = new Map<string, any>();
-          s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0 }));
           
+          // 1. Initialize with basic info
+          s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 }));
+          
+          // 2. Calculate match stats (Same as Ranking)
           s.rounds?.forEach(r => r.matches.forEach(m => {
               if(m.status === 'FINISHED' || m.status === 'BYE') {
                   const h = Number(m.homeScore||0), a = Number(m.awayScore||0);
                   const ht = sTeamStats.get(m.home), at = sTeamStats.get(m.away);
-                  if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
-                  if(at && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
+                  if(ht) { ht.gf+=h; ht.ga+=a; ht.gd=ht.gf-ht.ga; if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
+                  if(at && m.away!=='BYE (부전승)') { at.gf+=a; at.ga+=h; at.gd=at.gf-at.ga; if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
               }
+              // History Player
               if(m.status === 'FINISHED') {
                   [...m.homeScorers, ...m.awayScorers].forEach(p => { const k = p.name; if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeScorers.includes(p)?m.home:m.away, teamLogo: m.homeScorers.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerHist.get(k).goals += p.count; });
                   [...m.homeAssists, ...m.awayAssists].forEach(p => { const k = p.name; if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeAssists.includes(p)?m.home:m.away, teamLogo: m.homeAssists.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeAssists.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerHist.get(k).assists += p.count; });
               }
           }));
 
-          const sortedSeasonTeams = Array.from(sTeamStats.values()).sort((a,b)=>b.points-a.points);
+          // 3. Exact Sorting (Points > GD > GF)
+          const sortedSeasonTeams = Array.from(sTeamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
           
           sortedSeasonTeams.forEach((t, idx) => {
               const played = t.win + t.draw + t.loss;
               
-              // Owner
+              // Owner Accumulation
               if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0});
               const o = ownerHist.get(t.ownerName);
               o.win += t.win; o.draw += t.draw; o.loss += t.loss; o.points += t.points;
               
-              // 🔥 [Fix] Prize & Award Logic: Only if games played
               if (played > 0) {
                   if(idx===0) { o.golds++; o.prize+=s.prizes.first; }
                   else if(idx===1) { o.silvers++; o.prize+=s.prizes.second; }
                   else if(idx===2) { o.bronzes++; o.prize+=s.prizes.third; }
               }
 
-              // Team
+              // Team Accumulation
               if(!teamHist.has(t.name)) teamHist.set(t.name, {name:t.name, logo:t.logo, owner:t.ownerName, win:0, draw:0, loss:0, points:0});
               const tm = teamHist.get(t.name); tm.win+=t.win; tm.draw+=t.draw; tm.loss+=t.loss; tm.points+=t.points;
           });
@@ -335,7 +333,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_16_Logic_UI_Fix</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_17_History_Meta</p>
         </div>
       </div>
       
@@ -386,7 +384,6 @@ export default function FootballLeagueApp() {
                 </div>
               )}
 
-              {/* 🔥 [UI Fix] Owner Ranking: Removed 'Teams count' */}
               {rankingTab === 'OWNERS' && (
                   <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                       <table className="w-full text-left text-xs uppercase border-collapse">
@@ -548,7 +545,7 @@ export default function FootballLeagueApp() {
                     </div>
                 )}
 
-                {/* 2. Owners History - 🔥 [UI Fix] Awards Column Added & W/D/L Moved */}
+                {/* 2. Owners History */}
                 {historyTab === 'OWNERS' && (
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                         <table className="w-full text-left text-xs uppercase">
