@@ -1,10 +1,18 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
 
-// 🔥 [Meta] Social Image & Favicon Setup
+// 🔥 [Meta] Social Image & Favicon & Viewport Setup (Next.js 13 Compatible)
 export const metadata: Metadata = {
   title: "eFootball™ Live evolution™",
   description: "Join the League! eFootball Super League Management System.",
+  // Next.js 13에서는 viewport와 themeColor를 metadata 안에 넣습니다.
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
+  themeColor: "#020617",
   openGraph: {
     title: "eFootball™ Live evolution™",
     description: "eFootball 2025 기반 리그 매니지먼트 시스템",
@@ -12,7 +20,7 @@ export const metadata: Metadata = {
     siteName: "eFootball Live Evolution",
     images: [
       {
-        url: "https://www.konami.com/efootball/s/img/main_page_1.png", // 요청하신 코나미 이미지
+        url: "https://www.konami.com/efootball/s/img/main_page_1.png",
         width: 1200,
         height: 630,
         alt: "eFootball Main",
@@ -22,18 +30,10 @@ export const metadata: Metadata = {
     type: "website",
   },
   icons: {
-    icon: "/icon.webp",       // public/icon.webp
+    icon: "/icon.webp",
     shortcut: "/icon.webp",
-    apple: "/icon.webp",      // 모바일 홈 화면 추가 시 아이콘
+    apple: "/icon.webp",
   },
-};
-
-export const viewport: Viewport = {
-  themeColor: "#020617",
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export default function RootLayout({

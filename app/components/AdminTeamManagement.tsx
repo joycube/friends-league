@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 // app/components/AdminTeamManagement.tsx
 import React, { useState, useRef, useMemo } from 'react';
 import { db } from '../firebase';
