@@ -27,7 +27,6 @@ export default function FootballLeagueApp() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState('');
 
-  // 🔥 [Fix] Missing State Restored
   const [currentTime, setCurrentTime] = useState<string>('');
 
   // Data State
@@ -76,7 +75,6 @@ export default function FootballLeagueApp() {
   useEffect(() => {
     if (banners.length === 0) return;
     
-    // Sort: Video First
     const sortedBanners = [...banners].sort((a,b) => {
         const aIsVid = a.url.includes('youtube') || a.url.includes('youtu.be');
         const bIsVid = b.url.includes('youtube') || b.url.includes('youtu.be');
@@ -303,7 +301,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_13_Footer_Update</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_15_BuildFix</p>
         </div>
       </div>
       
@@ -344,7 +342,7 @@ export default function FootballLeagueApp() {
                           {activeRankingData.teams.map((t, i) => (
                               <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
                                   <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                  <td className="p-4 flex items-center gap-3"><img src={t.logo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/><div className="flex flex-col"><span className="font-bold">{t.name}</span><span className="text-[9px] text-slate-500">{t.ownerName}</span></div></td>
+                                  <td className="p-4 flex items-center gap-3"><img src={t.logo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/><div className="flex flex-col"><span className="font-bold">{t.name}</span><span className="text-[9px] text-slate-500">{t.ownerName}</span></div></td>
                                   <td className="p-4 text-center text-slate-400">{t.win}</td><td className="p-4 text-center text-slate-400">{t.draw}</td><td className="p-4 text-center text-slate-400">{t.loss}</td><td className="p-4 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
                                   <td className="p-4 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
                               </tr>
@@ -392,7 +390,7 @@ export default function FootballLeagueApp() {
                                       <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
                                       {/* 🔥 Updated: Player + Owner */}
                                       <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                      <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                      <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                       <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
                                   </tr>
                               ))}
@@ -406,11 +404,11 @@ export default function FootballLeagueApp() {
                       {activeRankingData.highlights.map((m, idx) => (
                           <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
                               <div className="relative aspect-video">
-                                  <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                  <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
                                   <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
                               </div>
                               <div className="p-3 flex items-center gap-3">
-                                  <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" />
+                                  <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
                                   <div className="flex-1 min-w-0">
                                       <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
                                       <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
@@ -443,7 +441,7 @@ export default function FootballLeagueApp() {
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div className="flex flex-col items-center w-1/3 gap-1">
-                                            <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                            <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
                                         </div>
                                         <div className="flex flex-col items-center">
@@ -458,7 +456,7 @@ export default function FootballLeagueApp() {
                                             )}
                                         </div>
                                         <div className="flex flex-col items-center w-1/3 gap-1">
-                                            <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                            <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
                                         </div>
                                     </div>
@@ -506,7 +504,7 @@ export default function FootballLeagueApp() {
                                 {historyData.teams.slice(0, 20).map((t, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className="p-4 text-center text-slate-600">{i+1}</td>
-                                        <td className="p-4 font-bold text-white flex items-center gap-2"><img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5"/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span></td>
+                                        <td className="p-4 font-bold text-white flex items-center gap-2"><img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5" alt=""/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span></td>
                                         <td className="p-4 text-center text-slate-400">{t.win}W {t.draw}D {t.loss}L</td>
                                         <td className="p-4 text-right text-emerald-400 font-bold">{t.points}</td>
                                     </tr>
@@ -554,7 +552,7 @@ export default function FootballLeagueApp() {
                                         <td className="p-3 text-center text-slate-600">{i+1}</td>
                                         {/* 🔥 Updated: Player + Owner */}
                                         <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                        <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                        <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                         <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
                                     </tr>
                                 ))}
@@ -635,12 +633,12 @@ export default function FootballLeagueApp() {
                             
                             {assignRegion === 'ALL' && !assignSearch ? (
                                 <div className="space-y-6">
-                                    {(assignCategory === 'ALL' || assignCategory === 'CLUB') && (<div><p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">[ 클럽 리그 ]</p><div className="grid grid-cols-4 gap-3">{clubLeagues.map((l, i) => (<div key={i} onClick={() => setAssignRegion(l)} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-105 transition-transform"><img src={leagues.find(lg=>lg.name===l)?.logo || FALLBACK_IMG} className="w-12 h-12 rounded-full bg-white object-contain p-1.5 shadow-md" /><span className="text-[9px] text-slate-400 text-center leading-tight">{l}</span></div>))}</div></div>)}
-                                    {(assignCategory === 'ALL' || assignCategory === 'NATIONAL') && (<div><p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">[ 국가대표 지역 ]</p><div className="grid grid-cols-4 gap-3">{nationalLeagues.map((l, i) => (<div key={i} onClick={() => setAssignRegion(l)} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-105 transition-transform"><img src={leagues.find(lg=>lg.name===l)?.logo || FALLBACK_IMG} className="w-12 h-12 rounded-full bg-white object-cover shadow-md" /><span className="text-[9px] text-slate-400 text-center leading-tight">{l}</span></div>))}</div></div>)}
+                                    {(assignCategory === 'ALL' || assignCategory === 'CLUB') && (<div><p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">[ 클럽 리그 ]</p><div className="grid grid-cols-4 gap-3">{clubLeagues.map((l, i) => (<div key={i} onClick={() => setAssignRegion(l)} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-105 transition-transform"><img src={leagues.find(lg=>lg.name===l)?.logo || FALLBACK_IMG} className="w-12 h-12 rounded-full bg-white object-contain p-1.5 shadow-md" alt="" /><span className="text-[9px] text-slate-400 text-center leading-tight">{l}</span></div>))}</div></div>)}
+                                    {(assignCategory === 'ALL' || assignCategory === 'NATIONAL') && (<div><p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">[ 국가대표 지역 ]</p><div className="grid grid-cols-4 gap-3">{nationalLeagues.map((l, i) => (<div key={i} onClick={() => setAssignRegion(l)} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-105 transition-transform"><img src={leagues.find(lg=>lg.name===l)?.logo || FALLBACK_IMG} className="w-12 h-12 rounded-full bg-white object-cover shadow-md" alt="" /><span className="text-[9px] text-slate-400 text-center leading-tight">{l}</span></div>))}</div></div>)}
                                 </div>
                             ) : (
                                 <div>
-                                    <div className="grid grid-cols-4 md:grid-cols-6 gap-3">{availableTeams.map(t => (<div key={t.id} onClick={() => handleQuickAssign(t)} className="relative aspect-square bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-900/20 transition-all active:scale-95 group"><img src={t.logo} className={`w-10 h-10 shadow-md ${t.category==='NATIONAL'?'rounded-full object-cover':'object-contain'}`} onError={(e:any)=>e.target.src=FALLBACK_IMG} /><div className="absolute bottom-1 w-full text-center px-1"><p className="text-[9px] truncate text-slate-400 group-hover:text-white font-bold">{t.name}</p></div><span className={`absolute top-1 right-1 text-[8px] px-1 rounded ${getTierBadgeColor(t.tier || 'C')}`}>{t.tier || 'C'}</span></div>))}</div>
+                                    <div className="grid grid-cols-4 md:grid-cols-6 gap-3">{availableTeams.map(t => (<div key={t.id} onClick={() => handleQuickAssign(t)} className="relative aspect-square bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-900/20 transition-all active:scale-95 group"><img src={t.logo} className={`w-10 h-10 shadow-md ${t.category==='NATIONAL'?'rounded-full object-cover':'object-contain'}`} onError={(e:any)=>e.target.src=FALLBACK_IMG} alt="" /><div className="absolute bottom-1 w-full text-center px-1"><p className="text-[9px] truncate text-slate-400 group-hover:text-white font-bold">{t.name}</p></div><span className={`absolute top-1 right-1 text-[8px] px-1 rounded ${getTierBadgeColor(t.tier || 'C')}`}>{t.tier || 'C'}</span></div>))}</div>
                                     <button onClick={() => {setAssignRegion('ALL'); setAssignSearch('');}} className="w-full mt-6 py-3 bg-slate-800 text-slate-400 text-xs rounded-xl hover:bg-slate-700">← 리그 목록으로 돌아가기</button>
                                 </div>
                             )}
@@ -648,14 +646,14 @@ export default function FootballLeagueApp() {
 
                         <div className="border-t border-slate-800 pt-4">
                             <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-emerald-400">배정된 팀 ({seasons.find(s=>s.id===adminTab)?.teams?.length || 0})</span><button onClick={handleFinishAssignment} className="text-xs bg-emerald-600 px-4 py-2 rounded font-bold hover:bg-emerald-500">✅ 배정 완료 & 스케줄 이동</button></div>
-                            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto mb-4">{seasons.find(s=>s.id===adminTab)?.teams?.map(t=>(<div key={t.id} className="text-xs bg-slate-950 p-2 rounded flex justify-between items-center border border-slate-800"><div className="flex items-center gap-2"><img src={t.logo} className="w-4 h-4 rounded-full"/><span>{t.name}</span><span className="text-slate-500">({t.ownerName})</span></div><button onClick={()=>handleRemoveTeamFromSeason(t.id)} className="text-red-500 font-bold px-2">×</button></div>))}</div>
+                            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto mb-4">{seasons.find(s=>s.id===adminTab)?.teams?.map(t=>(<div key={t.id} className="text-xs bg-slate-950 p-2 rounded flex justify-between items-center border border-slate-800"><div className="flex items-center gap-2"><img src={t.logo} className="w-4 h-4 rounded-full" alt="" /><span>{t.name}</span><span className="text-slate-500">({t.ownerName})</span></div><button onClick={()=>handleRemoveTeamFromSeason(t.id)} className="text-red-500 font-bold px-2">×</button></div>))}</div>
                             <div className="flex gap-2"><button onClick={handleGenerateSchedule} className="flex-1 bg-slate-800 py-3 rounded text-xs font-bold text-slate-400 border border-slate-700 hover:bg-slate-700">🔄 스케줄 재생성</button><button onClick={handleDeleteSeason} className="flex-1 bg-red-900/30 py-3 rounded text-xs font-bold text-red-500 border border-red-900 hover:bg-red-900/50">⚠️ 시즌 삭제</button></div>
                         </div>
                         </div>
                     )}
 
                     {adminTab === 'OWNER' && <div className="flex gap-2"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="Owner Name" className="bg-slate-950 p-3 rounded w-full text-base"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="Photo URL" className="bg-slate-950 p-3 rounded w-full text-base"/><button onClick={handleSaveOwner} className="bg-purple-600 px-6 rounded font-bold">Save</button></div>}
-                    {adminTab === 'OWNER' && <div className="grid grid-cols-2 gap-2 mt-4">{owners.map(o => <div key={o.id} onClick={()=>handleEditOwnerClick(o)} className="p-2 bg-black rounded flex items-center gap-2 cursor-pointer"><img src={o.photo} className="w-8 h-8 rounded-full" /><span>{o.nickname}</span></div>)}</div>}
+                    {adminTab === 'OWNER' && <div className="grid grid-cols-2 gap-2 mt-4">{owners.map(o => <div key={o.id} onClick={()=>handleEditOwnerClick(o)} className="p-2 bg-black rounded flex items-center gap-2 cursor-pointer"><img src={o.photo} className="w-8 h-8 rounded-full" alt="" /><span>{o.nickname}</span></div>)}</div>}
                  </>
              )}
            </div>
@@ -668,13 +666,13 @@ export default function FootballLeagueApp() {
           <p className="text-slate-500 text-xs mb-6">게임 참여 문의 : joycbue@gmail.com</p>
           <div className="flex justify-center gap-6">
               <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
-                  <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6"/>
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6" alt="Konami"/>
               </a>
               <a href="https://www.konami.com/efootball/ko/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="eFootball Official">
-                  <img src="https://img.icons8.com/ios-filled/50/ffffff/football.png" className="w-6 h-6"/>
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/football.png" className="w-6 h-6" alt="eFootball"/>
               </a>
               <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="YouTube Channel">
-                  <img src="https://img.icons8.com/ios-filled/50/ffffff/youtube-play.png" className="w-6 h-6"/>
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/youtube-play.png" className="w-6 h-6" alt="YouTube"/>
               </a>
           </div>
           <p className="text-[9px] text-slate-700 mt-4 uppercase tracking-widest">© 2026 eFootball Live Evolution League</p>
@@ -692,7 +690,7 @@ export default function FootballLeagueApp() {
 
               <div className="grid md:grid-cols-3 gap-8">
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                      <div className="flex flex-col items-center mb-4"><img src={editingMatch.homeLogo} className="w-12 h-12 mb-2"/><span className="font-bold text-white">{editingMatch.home}</span></div>
+                      <div className="flex flex-col items-center mb-4"><img src={editingMatch.homeLogo} className="w-12 h-12 mb-2" alt="" /><span className="font-bold text-white">{editingMatch.home}</span></div>
                       <div className="space-y-4">
                           <RecordInput type="homeScorer" inputValue={recordInputs.homeScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeScorers} label="⚽ Scorers" colorClass="text-emerald-400" />
                           <RecordInput type="homeAssist" inputValue={recordInputs.homeAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeAssists} label="🅰️ Assists" colorClass="text-blue-400" />
@@ -713,7 +711,7 @@ export default function FootballLeagueApp() {
                   </div>
 
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                      <div className="flex flex-col items-center mb-4"><img src={editingMatch.awayLogo} className="w-12 h-12 mb-2"/><span className="font-bold text-white">{editingMatch.away}</span></div>
+                      <div className="flex flex-col items-center mb-4"><img src={editingMatch.awayLogo} className="w-12 h-12 mb-2" alt="" /><span className="font-bold text-white">{editingMatch.away}</span></div>
                       <div className="space-y-4">
                           <RecordInput type="awayScorer" inputValue={recordInputs.awayScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayScorers} label="⚽ Scorers" colorClass="text-emerald-400" />
                           <RecordInput type="awayAssist" inputValue={recordInputs.awayAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayAssists} label="🅰️ Assists" colorClass="text-blue-400" />
