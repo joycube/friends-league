@@ -48,8 +48,8 @@ export default function FootballLeagueApp() {
   const [inputLeagueMode, setInputLeagueMode] = useState<'SINGLE' | 'DOUBLE'>('SINGLE');
   const [inputTotalPrize, setInputTotalPrize] = useState(100000);
   
-  // 🔥 [Fix] Prizes: Removed Assist, Adjusted for 4 categories
-  const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000, assist: 0 }); 
+  // Prize States
+  const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000, assist: 0 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
   const [newOwnerName, setNewOwnerName] = useState('');
@@ -87,7 +87,7 @@ export default function FootballLeagueApp() {
     return () => clearTimeout(t);
   }, [bannerIdx, banners]);
 
-  // 🔥 [Fix] Auto Prize Logic: 50% / 30% / 10% / 10% (No Assist Prize)
+  // Auto Prize Logic
   useEffect(() => { 
     if (isAutoPrize) {
       setPrizes({ 
@@ -224,6 +224,14 @@ export default function FootballLeagueApp() {
     return { availableTeams: getSortedTeamsLogic(filtered, ''), assignmentRegions: getSortedLeagues(regions), clubLeagues: getSortedLeagues(cList), nationalLeagues: getSortedLeagues(nList) };
   }, [masterTeams, seasons, adminTab, assignCategory, assignRegion, assignTier, assignSearch, leagues]);
 
+  // 🔥 [Fix] Reset Inputs when opening Match Modal
+  const handleMatchClick = (m: Match) => { 
+      setEditingMatch({...m}); 
+      setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl});
+      // Reset input fields
+      setRecordInputs({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
   const handleTouchEnd = () => { if (!touchStart || !touchEnd) return; const dist = touchStart - touchEnd; if (dist > 50) setBannerIdx((p) => (p + 1) % banners.length); if (dist < -50) setBannerIdx((p) => (p - 1 + banners.length) % banners.length); setTouchStart(0); setTouchEnd(0); };
@@ -231,15 +239,7 @@ export default function FootballLeagueApp() {
   const handleRecordInputChange = (type: string, field: string, value: string) => { setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } })); };
   const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
   const handleEditOwnerClick = (o: Owner) => { setEditOwnerId(o.docId!); setNewOwnerName(o.nickname); setNewOwnerPhoto(o.photo); };
-  
-  // 🔥 [Fix] Create Season with Correct Prize State
-  const handleCreateSeason = async () => { 
-    if(inputSeasonName) { 
-      const id=Date.now(); 
-      await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); 
-      setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); alert("게임 생성 완료! 팀을 배정해주세요."); 
-    } else { alert("시즌 이름 입력 필요"); } 
-  };
+  const handleCreateSeason = async () => { if(inputSeasonName) { const id=Date.now(); await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); alert("게임 생성 완료! 팀을 배정해주세요."); } else { alert("시즌 이름 입력 필요"); } };
   const handleDeleteBanner = async (id:string) => { if(confirm("배너 삭제?")) await deleteDoc(doc(db,"banners",id)); };
   
   const handleQuickAssign = async (team: MasterTeam) => {
@@ -262,57 +262,52 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [Fix] Improved Schedule Logic (Safety against undefined)
+  // 🔥 [Fix] Refined Tournament Logic (Clean stop at Final)
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
     let shuffled = [...teams].sort(() => Math.random() - 0.5);
     const rounds: Round[] = [];
 
-    // [TOURNAMENT]
     if(s.type === 'TOURNAMENT') {
-        for(let i=0; i<shuffled.length-1; i+=2) {
-            if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) {
-                for(let j=i+2; j<shuffled.length; j++) {
-                    if(shuffled[j].ownerName !== shuffled[i].ownerName) {
-                        const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break;
-                    }
-                }
-            }
-        }
+        // Owner Check
+        for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
+        
         const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
-        const matchCount = nextPow2 / 2;
+        let activeMatchCount = nextPow2 / 2; // e.g. 4 teams -> 2 matches
+        
+        // Round 1 (Initial)
         let matches: Match[] = [];
-        for(let i=0; i<matchCount; i++) {
+        for(let i=0; i<activeMatchCount; i++) {
            const h = shuffled[i*2], a = shuffled[i*2+1];
-           const stageName = getTournamentStageName(nextPow2, matchCount);
-           // 🔥 [Fix] Ensure null, not undefined
+           const stageName = getTournamentStageName(nextPow2, activeMatchCount);
            matches.push(a ? 
              { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } 
              : 
              { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` }
            );
         }
-        rounds.push({ round: 1, matches, seasonId: s.id, name: getTournamentStageName(nextPow2, matchCount) });
+        rounds.push({ round: 1, matches, seasonId: s.id, name: getTournamentStageName(nextPow2, activeMatchCount) });
         
-        let rIdx = 2; let currentCount = matchCount / 2;
-        while(currentCount >= 0.5) {
-            let nextMatches: Match[] = []; const stageName = getTournamentStageName(nextPow2, currentCount);
-            for(let i=0; i < Math.ceil(currentCount); i++) {
-                // 🔥 [Fix] Check for Final Match to avoid undefined nextMatchId
-                const nextId = currentCount > 0.5 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : undefined; 
-                // Firestore doesn't like undefined, so strict check or omit if undefined? 
-                // Better to put null if undefined is risky, but here we can just use conditional object property or explicitly null.
-                // Let's use null if it's the final.
+        // Subsequent Rounds
+        let rIdx = 2;
+        while (activeMatchCount > 1) {
+            activeMatchCount /= 2; // Next round has half matches
+            const stageName = getTournamentStageName(nextPow2, activeMatchCount);
+            let nextMatches: Match[] = [];
+            
+            for(let i=0; i < activeMatchCount; i++) {
+                // If this is the Final (activeMatchCount == 1), nextMatchId is null
+                const nextId = activeMatchCount > 1 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : null;
                 
                 nextMatches.push({ 
                     id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, 
                     home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', 
                     homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], 
                     status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, 
-                    nextMatchId: nextId || null // 🔥 Forced Null
+                    nextMatchId: nextId 
                 }); 
             }
             rounds.push({ round: rIdx, matches: nextMatches, seasonId: s.id, name: stageName });
-            if(currentCount === 0.5) break; currentCount /= 2; rIdx++;
+            rIdx++;
         }
     } 
     // [LEAGUE]
@@ -353,7 +348,6 @@ export default function FootballLeagueApp() {
   const handleFinishAssignment = async () => {
       const s = seasons.find(s => s.id === adminTab); if(!s) return;
       if((s.teams||[]).length < 2) return alert("최소 2팀 이상 배정해야 합니다.");
-      
       if(s.rounds && s.rounds.length > 0) { 
           if(confirm("스케줄 페이지로 이동하시겠습니까?")) { setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } 
       } else { 
@@ -374,7 +368,6 @@ export default function FootballLeagueApp() {
   };
 
   const handleRemoveTeamFromSeason = async (tid:number) => { if(confirm("제외하시겠습니까?")) await updateDoc(doc(db,"seasons",String(adminTab)), {teams:seasons.find(s=>s.id===adminTab)?.teams?.filter(t=>t.id!==tid)}); };
-  const handleMatchClick = (m: Match) => { setEditingMatch({...m}); setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl}); };
   
   const saveMatchResult = async () => {
     if(!editingMatch) return; const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -389,10 +382,7 @@ export default function FootballLeagueApp() {
   const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
   const renderBanners = () => sortedBannersDisplay.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>));
 
-  // 🔥 Admin Password Handler
-  const handleAdminLogin = () => {
-      if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); }
-  };
+  const handleAdminLogin = () => { if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); } };
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
@@ -400,7 +390,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_04_20_Final_Fix</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_06_23_Tournament_Scoreboard_Polished</p>
         </div>
       </div>
       
@@ -541,6 +531,8 @@ export default function FootballLeagueApp() {
                                         <div className="flex flex-col items-center w-1/3 gap-1">
                                             <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
+                                            {/* 🔥 [UI Fix] Owner Name */}
+                                            <span className="text-[9px] text-slate-500">{m.homeOwner}</span>
                                         </div>
                                         <div className="flex flex-col items-center">
                                             {m.status === 'FINISHED' ? (
@@ -556,17 +548,20 @@ export default function FootballLeagueApp() {
                                         <div className="flex flex-col items-center w-1/3 gap-1">
                                             <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
+                                            {/* 🔥 [UI Fix] Owner Name */}
+                                            <span className="text-[9px] text-slate-500">{m.awayOwner}</span>
                                         </div>
                                     </div>
+                                    {/* 🔥 [UI Fix] Score Count */}
                                     {m.status === 'FINISHED' && (
                                         <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[9px]">
                                             <div className="text-center space-y-0.5">
-                                                {m.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name}</div>)}
-                                                {m.homeAssists.map((s, idx)=><div key={`ha-${idx}`} className="text-slate-500">🅰️ {s.name}</div>)}
+                                                {m.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
+                                                {m.homeAssists.map((s, idx)=><div key={`ha-${idx}`} className="text-slate-500">🅰️ {s.name} {s.count>1 && `(${s.count})`}</div>)}
                                             </div>
                                             <div className="text-center space-y-0.5">
-                                                {m.awayScorers.map((s, idx)=><div key={`ag-${idx}`} className="text-slate-300">⚽ {s.name}</div>)}
-                                                {m.awayAssists.map((s, idx)=><div key={`aa-${idx}`} className="text-slate-500">🅰️ {s.name}</div>)}
+                                                {m.awayScorers.map((s, idx)=><div key={`ag-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
+                                                {m.awayAssists.map((s, idx)=><div key={`aa-${idx}`} className="text-slate-500">🅰️ {s.name} {s.count>1 && `(${s.count})`}</div>)}
                                             </div>
                                         </div>
                                     )}
@@ -740,6 +735,7 @@ export default function FootballLeagueApp() {
                                         <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                        <div className="col-span-2"><label className="text-[10px] text-slate-500">🅰️ Assist (Optional)</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                     </div>
                                 )}
                             </div>

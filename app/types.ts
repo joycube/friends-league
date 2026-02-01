@@ -16,7 +16,9 @@ export interface Match {
   id: string; seasonId: number; home: string; away: string; homeLogo: string; awayLogo: string;
   homeOwner: string; awayOwner: string; homeScore: string; awayScore: string;
   homeScorers: MatchRecord[]; awayScorers: MatchRecord[]; homeAssists: MatchRecord[]; awayAssists: MatchRecord[];
-  status: 'UPCOMING' | 'FINISHED' | 'BYE'; youtubeUrl: string; stage?: string; matchLabel?: string; nextMatchId?: string;
+  status: 'UPCOMING' | 'FINISHED' | 'BYE'; youtubeUrl: string; stage?: string; matchLabel?: string; 
+  // 🔥 [Fix] Allow null for nextMatchId to satisfy Firestore & TypeScript
+  nextMatchId?: string | null;
 }
 export interface Round { round: number; matches: Match[]; seasonId: number; name?: string; }
 export interface Banner { id?: string; title: string; url: string; order: number; }
@@ -55,7 +57,6 @@ export const getSortedLeagues = (leagueNames: string[]) => {
   return leagueNames.sort((a, b) => (LEAGUE_RANK[a] || 50) - (LEAGUE_RANK[b] || 50));
 };
 
-// 기존 함수 (보더용)
 export const getTierColor = (tier: string = 'C') => {
   switch(tier) {
     case 'S': return 'bg-purple-600 text-white border-purple-400';
@@ -66,7 +67,6 @@ export const getTierColor = (tier: string = 'C') => {
   }
 };
 
-// 🔥 [New] 배지용 배경색 함수 (안전장치 포함)
 export const getTierBadgeColor = (tier: string = 'C') => {
   switch(tier) {
     case 'S': return 'bg-purple-600 text-white';
