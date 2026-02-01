@@ -48,7 +48,6 @@ export default function FootballLeagueApp() {
   const [inputLeagueMode, setInputLeagueMode] = useState<'SINGLE' | 'DOUBLE'>('SINGLE');
   const [inputTotalPrize, setInputTotalPrize] = useState(100000);
   
-  // Prize States
   const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000, assist: 0 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
@@ -87,16 +86,9 @@ export default function FootballLeagueApp() {
     return () => clearTimeout(t);
   }, [bannerIdx, banners]);
 
-  // Auto Prize Logic
   useEffect(() => { 
     if (isAutoPrize) {
-      setPrizes({ 
-        first: Math.floor(inputTotalPrize * 0.5), 
-        second: Math.floor(inputTotalPrize * 0.3), 
-        third: Math.floor(inputTotalPrize * 0.1), 
-        scorer: Math.floor(inputTotalPrize * 0.1), 
-        assist: 0 
-      }); 
+      setPrizes({ first: Math.floor(inputTotalPrize * 0.5), second: Math.floor(inputTotalPrize * 0.3), third: Math.floor(inputTotalPrize * 0.1), scorer: Math.floor(inputTotalPrize * 0.1), assist: 0 }); 
     }
   }, [inputTotalPrize, isAutoPrize]);
 
@@ -126,6 +118,9 @@ export default function FootballLeagueApp() {
     });
   }, [banners]);
 
+  // 🔥 [NEW] Helper to generate composite key
+  const getPlayerKey = (name: string, team: string, owner: string) => `${name.trim()}-${team}-${owner}`;
+
   // --- Ranking Data ---
   const activeRankingData = useMemo(() => {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
@@ -133,7 +128,9 @@ export default function FootballLeagueApp() {
     
     const teamStats = new Map<string, Team>();
     targetSeason.teams.forEach(t => teamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 }));
-    const playerStats = new Map<string, any>(); 
+    
+    // 🔥 [Fix] Use Map with Composite Key for Players
+    const playerStatsMap = new Map<string, any>(); 
     
     targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
       if(m.status === 'FINISHED' || m.status === 'BYE') {
@@ -143,8 +140,25 @@ export default function FootballLeagueApp() {
         if(at && m.away !== 'BYE (부전승)') { at.gf+=a; at.ga+=h; at.gd = at.gf - at.ga; if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } }
       }
       if(m.status === 'FINISHED') {
-        [...m.homeScorers, ...m.awayScorers].forEach(s => { const k = `${s.name}-${m.home}-${m.seasonId}`; if(!playerStats.has(k)) playerStats.set(k, {name:s.name, team: m.homeScorers.includes(s)?m.home:m.away, teamLogo: m.homeScorers.includes(s)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(s)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerStats.get(k).goals += s.count; });
-        [...m.homeAssists, ...m.awayAssists].forEach(s => { const k = `${s.name}-${m.home}-${m.seasonId}`; if(!playerStats.has(k)) playerStats.set(k, {name:s.name, team: m.homeAssists.includes(s)?m.home:m.away, teamLogo: m.homeAssists.includes(s)?m.homeLogo:m.awayLogo, owner: m.homeAssists.includes(s)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerStats.get(k).assists += s.count; });
+        // 🔥 Aggregation with Composite Key
+        [...m.homeScorers, ...m.awayScorers].forEach(s => { 
+            const teamName = m.homeScorers.includes(s) ? m.home : m.away;
+            const ownerName = m.homeScorers.includes(s) ? m.homeOwner : m.awayOwner;
+            const teamLogo = m.homeScorers.includes(s) ? m.homeLogo : m.awayLogo;
+            const key = getPlayerKey(s.name, teamName, ownerName);
+            
+            if(!playerStatsMap.has(key)) playerStatsMap.set(key, { name: s.name.trim(), team: teamName, teamLogo, owner: ownerName, goals: 0, assists: 0 });
+            playerStatsMap.get(key).goals += s.count;
+        });
+        [...m.homeAssists, ...m.awayAssists].forEach(s => { 
+            const teamName = m.homeAssists.includes(s) ? m.home : m.away;
+            const ownerName = m.homeAssists.includes(s) ? m.homeOwner : m.awayOwner;
+            const teamLogo = m.homeAssists.includes(s) ? m.homeLogo : m.awayLogo;
+            const key = getPlayerKey(s.name, teamName, ownerName);
+
+            if(!playerStatsMap.has(key)) playerStatsMap.set(key, { name: s.name.trim(), team: teamName, teamLogo, owner: ownerName, goals: 0, assists: 0 });
+            playerStatsMap.get(key).assists += s.count;
+        });
       }
     }));
 
@@ -172,12 +186,15 @@ export default function FootballLeagueApp() {
         return { ...m, winner, winnerLogo };
     }) || [];
 
-    return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players: Array.from(playerStats.values()).sort((a,b) => b.goals - a.goals || b.assists - a.assists), highlights };
+    return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players: Array.from(playerStatsMap.values()).sort((a:any,b:any) => b.goals - a.goals || b.assists - a.assists), highlights };
   }, [seasons, viewSeasonId]);
 
   // --- History Data ---
   const historyData = useMemo(() => {
-      const ownerHist = new Map<string, any>(); const teamHist = new Map<string, any>(); const playerHist = new Map<string, any>();
+      const ownerHist = new Map<string, any>(); const teamHist = new Map<string, any>(); 
+      // 🔥 [Fix] Map for Player History Aggregation
+      const playerHistMap = new Map<string, any>();
+
       seasons.forEach(s => {
           if(!s.teams) return;
           const sTeamStats = new Map<string, any>();
@@ -190,8 +207,25 @@ export default function FootballLeagueApp() {
                   if(at && m.away!=='BYE (부전승)') { at.gf+=a; at.ga+=h; at.gd=at.gf-at.ga; if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
               }
               if(m.status === 'FINISHED') {
-                  [...m.homeScorers, ...m.awayScorers].forEach(p => { const k = p.name; if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeScorers.includes(p)?m.home:m.away, teamLogo: m.homeScorers.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeScorers.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerHist.get(k).goals += p.count; });
-                  [...m.homeAssists, ...m.awayAssists].forEach(p => { const k = p.name; if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeAssists.includes(p)?m.home:m.away, teamLogo: m.homeAssists.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeAssists.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerHist.get(k).assists += p.count; });
+                  // 🔥 History Aggregation with Composite Key
+                  [...m.homeScorers, ...m.awayScorers].forEach(p => { 
+                      const teamName = m.homeScorers.includes(p) ? m.home : m.away;
+                      const ownerName = m.homeScorers.includes(p) ? m.homeOwner : m.awayOwner;
+                      const teamLogo = m.homeScorers.includes(p) ? m.homeLogo : m.awayLogo;
+                      const key = getPlayerKey(p.name, teamName, ownerName); 
+                      
+                      if(!playerHistMap.has(key)) playerHistMap.set(key, {name:p.name.trim(), team: teamName, teamLogo, owner: ownerName, goals:0, assists:0}); 
+                      playerHistMap.get(key).goals += p.count; 
+                  });
+                  [...m.homeAssists, ...m.awayAssists].forEach(p => { 
+                      const teamName = m.homeAssists.includes(p) ? m.home : m.away;
+                      const ownerName = m.homeAssists.includes(p) ? m.homeOwner : m.awayOwner;
+                      const teamLogo = m.homeAssists.includes(p) ? m.homeLogo : m.awayLogo;
+                      const key = getPlayerKey(p.name, teamName, ownerName);
+                      
+                      if(!playerHistMap.has(key)) playerHistMap.set(key, {name:p.name.trim(), team: teamName, teamLogo, owner: ownerName, goals:0, assists:0}); 
+                      playerHistMap.get(key).assists += p.count; 
+                  });
               }
           }));
           const sortedSeasonTeams = Array.from(sTeamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
@@ -207,8 +241,18 @@ export default function FootballLeagueApp() {
               const tm = teamHist.get(t.name); tm.win+=t.win; tm.draw+=t.draw; tm.loss+=t.loss; tm.points+=t.points;
           });
       });
-      return { owners: Array.from(ownerHist.values()).sort((a,b) => b.points - a.points || b.prize - a.prize), teams: Array.from(teamHist.values()).sort((a,b) => b.points - a.points), players: Array.from(playerHist.values()).sort((a,b) => b.goals - a.goals || b.assists - a.assists) };
+      return { owners: Array.from(ownerHist.values()).sort((a,b) => b.points - a.points || b.prize - a.prize), teams: Array.from(teamHist.values()).sort((a,b) => b.points - a.points), players: Array.from(playerHistMap.values()).sort((a:any,b:any) => b.goals - a.goals || b.assists - a.assists) };
   }, [seasons]);
+
+  // 🔥 [NEW] Autocomplete List Generator
+  const getTeamPlayers = (teamName: string) => {
+    // Collect all players who have scored/assisted for this team in current season
+    const players = new Set<string>();
+    activeRankingData.players.forEach((p:any) => {
+        if(p.team === teamName) players.add(p.name);
+    });
+    return Array.from(players);
+  };
 
   const { availableTeams, assignmentRegions, clubLeagues, nationalLeagues } = useMemo(() => {
     const currentSeason = seasons.find(s => s.id === adminTab);
@@ -223,14 +267,6 @@ export default function FootballLeagueApp() {
     const nList = regions.filter(r => !cList.includes(r));
     return { availableTeams: getSortedTeamsLogic(filtered, ''), assignmentRegions: getSortedLeagues(regions), clubLeagues: getSortedLeagues(cList), nationalLeagues: getSortedLeagues(nList) };
   }, [masterTeams, seasons, adminTab, assignCategory, assignRegion, assignTier, assignSearch, leagues]);
-
-  // 🔥 [Fix] Reset Inputs when opening Match Modal
-  const handleMatchClick = (m: Match) => { 
-      setEditingMatch({...m}); 
-      setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl});
-      // Reset input fields
-      setRecordInputs({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
-  };
 
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
@@ -262,85 +298,32 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [Fix] Refined Tournament Logic (Clean stop at Final)
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
     let shuffled = [...teams].sort(() => Math.random() - 0.5);
     const rounds: Round[] = [];
-
     if(s.type === 'TOURNAMENT') {
-        // Owner Check
         for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
-        
-        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
-        let activeMatchCount = nextPow2 / 2; // e.g. 4 teams -> 2 matches
-        
-        // Round 1 (Initial)
-        let matches: Match[] = [];
-        for(let i=0; i<activeMatchCount; i++) {
-           const h = shuffled[i*2], a = shuffled[i*2+1];
-           const stageName = getTournamentStageName(nextPow2, activeMatchCount);
-           matches.push(a ? 
-             { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } 
-             : 
-             { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` }
-           );
+        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; let matches: Match[] = [];
+        for(let i=0; i<matchCount; i++) { const h = shuffled[i*2], a = shuffled[i*2+1]; const stageName = getTournamentStageName(nextPow2, matchCount);
+           matches.push(a ? { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } : { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` });
         }
-        rounds.push({ round: 1, matches, seasonId: s.id, name: getTournamentStageName(nextPow2, activeMatchCount) });
-        
-        // Subsequent Rounds
-        let rIdx = 2;
-        while (activeMatchCount > 1) {
-            activeMatchCount /= 2; // Next round has half matches
-            const stageName = getTournamentStageName(nextPow2, activeMatchCount);
-            let nextMatches: Match[] = [];
-            
-            for(let i=0; i < activeMatchCount; i++) {
-                // If this is the Final (activeMatchCount == 1), nextMatchId is null
-                const nextId = activeMatchCount > 1 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : null;
-                
-                nextMatches.push({ 
-                    id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, 
-                    home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', 
-                    homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], 
-                    status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, 
-                    nextMatchId: nextId 
-                }); 
+        rounds.push({ round: 1, matches, seasonId: s.id, name: getTournamentStageName(nextPow2, matchCount) });
+        let rIdx = 2; let currentCount = matchCount / 2;
+        while(currentCount >= 0.5) {
+            let nextMatches: Match[] = []; const stageName = getTournamentStageName(nextPow2, currentCount);
+            for(let i=0; i < Math.ceil(currentCount); i++) {
+                const nextId = currentCount > 0.5 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : null; 
+                nextMatches.push({ id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: nextId }); 
             }
             rounds.push({ round: rIdx, matches: nextMatches, seasonId: s.id, name: stageName });
-            rIdx++;
+            if(currentCount === 0.5) break; currentCount /= 2; rIdx++;
         }
-    } 
-    // [LEAGUE]
-    else {
-        const dummyTeam = {id:0, seasonId:s.id, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0};
-        if(shuffled.length % 2 !== 0) shuffled.push(dummyTeam as Team);
-        const numTeams = shuffled.length; const numRounds = numTeams - 1; const half = numTeams / 2;
-        let teamsArr = [...shuffled];
-
-        for(let r = 0; r < numRounds; r++) {
-            const roundMatches: Match[] = [];
-            for(let i = 0; i < half; i++) {
-                const home = teamsArr[i]; const away = teamsArr[numTeams - 1 - i];
-                if(home.name !== 'BYE' && away.name !== 'BYE') {
-                    roundMatches.push({
-                        id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName,
-                        homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}`, matchLabel: `Game ${i+1}`
-                    });
-                }
-            }
-            rounds.push({round: r+1, matches: roundMatches, seasonId: s.id, name: `Round ${r+1}`});
-            const first = teamsArr[0]; const rest = teamsArr.slice(1);
-            teamsArr = [first, rest[rest.length - 1], ...rest.slice(0, rest.length - 1)];
-        }
-        if(s.leagueMode === 'DOUBLE') {
-            const initialRoundsCount = rounds.length;
-            const newRounds: Round[] = [];
-            rounds.forEach((r, idx) => {
-                const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` }));
-                newRounds.push({ round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` });
-            });
-            rounds.push(...newRounds);
-        }
+    } else {
+        if(shuffled.length % 2 !== 0) shuffled.push({id:0, seasonId:0, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0});
+        const numRounds = shuffled.length - 1; const half = shuffled.length / 2; let allRoundMatches = []; let tempTeams = [...shuffled];
+        for(let r=0; r<numRounds; r++) { let roundMatches: Match[] = []; for(let i=0; i<half; i++) { const home = tempTeams[i], away = tempTeams[shuffled.length - 1 - i]; if(home.name !== 'BYE' && away.name !== 'BYE') { roundMatches.push({ id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}`, matchLabel: `Game ${i+1}` }); } } allRoundMatches.push(roundMatches); tempTeams.splice(1, 0, tempTeams.pop()!); }
+        allRoundMatches.forEach((rm, idx) => rounds.push({round: idx+1, matches: rm, seasonId: s.id, name: `Round ${idx+1}`}));
+        if(s.leagueMode === 'DOUBLE') { const firstHalfLen = rounds.length; allRoundMatches.forEach((rm, idx) => { const returnMatches = rm.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${firstHalfLen + idx + 1}` })); rounds.push({round: firstHalfLen + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${firstHalfLen + idx + 1}`}); }); }
     }
     return rounds;
   };
@@ -348,16 +331,8 @@ export default function FootballLeagueApp() {
   const handleFinishAssignment = async () => {
       const s = seasons.find(s => s.id === adminTab); if(!s) return;
       if((s.teams||[]).length < 2) return alert("최소 2팀 이상 배정해야 합니다.");
-      if(s.rounds && s.rounds.length > 0) { 
-          if(confirm("스케줄 페이지로 이동하시겠습니까?")) { setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } 
-      } else { 
-          if(confirm("팀 배정을 완료하고 대진표를 생성하여 스케줄로 이동하시겠습니까?")) { 
-              const rounds = generateRoundsLogic(s, s.teams || []); 
-              await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); 
-              alert("대진표 생성 완료! 스케줄 화면으로 이동합니다."); 
-              setCurrentView('SCHEDULE'); setViewSeasonId(s.id); 
-          } 
-      }
+      if(s.rounds && s.rounds.length > 0) { if(confirm("스케줄 페이지로 이동하시겠습니까?")) { setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } } 
+      else { if(confirm("팀 배정을 완료하고 대진표를 생성하여 스케줄로 이동하시겠습니까?")) { const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert("대진표 생성 완료! 스케줄 화면으로 이동합니다."); setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } }
   };
 
   const handleGenerateSchedule = async () => {
@@ -368,6 +343,11 @@ export default function FootballLeagueApp() {
   };
 
   const handleRemoveTeamFromSeason = async (tid:number) => { if(confirm("제외하시겠습니까?")) await updateDoc(doc(db,"seasons",String(adminTab)), {teams:seasons.find(s=>s.id===adminTab)?.teams?.filter(t=>t.id!==tid)}); };
+  const handleMatchClick = (m: Match) => { 
+      setEditingMatch({...m}); 
+      setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl});
+      setRecordInputs({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
+  };
   
   const saveMatchResult = async () => {
     if(!editingMatch) return; const s = seasons.find(se => se.id === editingMatch.seasonId);
@@ -377,12 +357,29 @@ export default function FootballLeagueApp() {
     }
   };
   
-  const handleRecordAdd = (type: string) => { if(!editingMatch)return; const k = type as keyof typeof recordInputs; const count = Number(recordInputs[k].count); if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Number(p.homeScore)+count)})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Number(p.awayScore)+count)})); const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; setEditingMatch({...editingMatch,[f]:[...list,{id:Date.now(),name:recordInputs[k].name,count}]}); };
+  const handleRecordAdd = (type: string) => { 
+      if(!editingMatch)return; 
+      const k = type as keyof typeof recordInputs; 
+      const count = Number(recordInputs[k].count);
+      const name = recordInputs[k].name.trim(); // 🔥 Auto Trim
+      if(!name) return alert("선수 이름을 입력하세요");
+
+      if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Number(p.homeScore)+count)})); 
+      if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Number(p.awayScore)+count)})); 
+      
+      const f=type+'s' as keyof Match; 
+      const list=(editingMatch[f] as MatchRecord[])||[]; 
+      setEditingMatch({...editingMatch,[f]:[...list,{id:Date.now(),name,count}]}); 
+      setRecordInputs(prev => ({...prev, [type]: {...prev[type as keyof typeof prev], name: ''}})); // Clear Name Input
+  };
+
   const handleRecordRemove = (type: string, id: number) => { if(!editingMatch)return; const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; const item=list.find(r=>r.id===id); if(item){ if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Math.max(0,Number(p.homeScore)-item.count))})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Math.max(0,Number(p.awayScore)-item.count))})); } setEditingMatch({...editingMatch,[f]:list.filter(r=>r.id!==id)}); };
   const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
   const renderBanners = () => sortedBannersDisplay.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>));
 
-  const handleAdminLogin = () => { if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); } };
+  const handleAdminLogin = () => {
+      if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); }
+  };
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
@@ -390,7 +387,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_06_23_Tournament_Scoreboard_Polished</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_05_23_Auto_Aggregation</p>
         </div>
       </div>
       
@@ -473,8 +470,8 @@ export default function FootballLeagueApp() {
                           <tbody>
                               {activeRankingData.players
                                   .filter(p => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-                                  .sort((a,b) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                                  .slice(0, 20).map((p,i)=>(
+                                  .sort((a:any,b:any) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
+                                  .slice(0, 20).map((p:any,i:number)=>(
                                   <tr key={i} className="border-b border-slate-800/50">
                                       <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
                                       <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
@@ -531,7 +528,7 @@ export default function FootballLeagueApp() {
                                         <div className="flex flex-col items-center w-1/3 gap-1">
                                             <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
-                                            {/* 🔥 [UI Fix] Owner Name */}
+                                            {/* Owner Name */}
                                             <span className="text-[9px] text-slate-500">{m.homeOwner}</span>
                                         </div>
                                         <div className="flex flex-col items-center">
@@ -548,11 +545,10 @@ export default function FootballLeagueApp() {
                                         <div className="flex flex-col items-center w-1/3 gap-1">
                                             <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
-                                            {/* 🔥 [UI Fix] Owner Name */}
+                                            {/* Owner Name */}
                                             <span className="text-[9px] text-slate-500">{m.awayOwner}</span>
                                         </div>
                                     </div>
-                                    {/* 🔥 [UI Fix] Score Count */}
                                     {m.status === 'FINISHED' && (
                                         <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[9px]">
                                             <div className="text-center space-y-0.5">
@@ -651,9 +647,9 @@ export default function FootballLeagueApp() {
                             <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">{histPlayerMode}</th></tr></thead>
                             <tbody>
                                 {historyData.players
-                                    .filter(p => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-                                    .sort((a,b) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                                    .slice(0, 20).map((p, i) => (
+                                    .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
+                                    .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
+                                    .slice(0, 20).map((p:any, i:number) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className="p-3 text-center text-slate-600">{i+1}</td>
                                         {/* 🔥 Updated: Player + Owner */}
@@ -823,8 +819,12 @@ export default function FootballLeagueApp() {
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
                       <div className="flex flex-col items-center mb-4"><img src={editingMatch.homeLogo} className="w-12 h-12 mb-2" alt="" /><span className="font-bold text-white">{editingMatch.home}</span></div>
                       <div className="space-y-4">
-                          <RecordInput type="homeScorer" inputValue={recordInputs.homeScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeScorers} label="⚽ Scorers" colorClass="text-emerald-400" />
-                          <RecordInput type="homeAssist" inputValue={recordInputs.homeAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeAssists} label="🅰️ Assists" colorClass="text-blue-400" />
+                          {/* 🔥 [Feature] Autocomplete Datalist */}
+                          <datalist id="homeTeamPlayers">
+                              {getTeamPlayers(editingMatch.home).map((name, i) => <option key={i} value={name} />)}
+                          </datalist>
+                          <RecordInput type="homeScorer" inputValue={recordInputs.homeScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeScorers} label="⚽ Scorers" colorClass="text-emerald-400" datalistId="homeTeamPlayers" />
+                          <RecordInput type="homeAssist" inputValue={recordInputs.homeAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeAssists} label="🅰️ Assists" colorClass="text-blue-400" datalistId="homeTeamPlayers" />
                       </div>
                   </div>
 
@@ -844,8 +844,12 @@ export default function FootballLeagueApp() {
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
                       <div className="flex flex-col items-center mb-4"><img src={editingMatch.awayLogo} className="w-12 h-12 mb-2" alt="" /><span className="font-bold text-white">{editingMatch.away}</span></div>
                       <div className="space-y-4">
-                          <RecordInput type="awayScorer" inputValue={recordInputs.awayScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayScorers} label="⚽ Scorers" colorClass="text-emerald-400" />
-                          <RecordInput type="awayAssist" inputValue={recordInputs.awayAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayAssists} label="🅰️ Assists" colorClass="text-blue-400" />
+                          {/* 🔥 [Feature] Autocomplete Datalist */}
+                          <datalist id="awayTeamPlayers">
+                              {getTeamPlayers(editingMatch.away).map((name, i) => <option key={i} value={name} />)}
+                          </datalist>
+                          <RecordInput type="awayScorer" inputValue={recordInputs.awayScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayScorers} label="⚽ Scorers" colorClass="text-emerald-400" datalistId="awayTeamPlayers" />
+                          <RecordInput type="awayAssist" inputValue={recordInputs.awayAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayAssists} label="🅰️ Assists" colorClass="text-blue-400" datalistId="awayTeamPlayers" />
                       </div>
                   </div>
               </div>
