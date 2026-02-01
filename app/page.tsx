@@ -292,7 +292,7 @@ export default function FootballLeagueApp() {
     return { assignmentTeams: available, assignmentRegions: Array.from(new Set(masterTeams.map(t => t.region))).sort() };
   }, [masterTeams, seasons, adminTab]);
 
-  // --- Handlers (Restored) ---
+  // --- Handlers (Corrected) ---
   const handleRecordInputChange = (type: string, field: string, value: string) => {
     setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } }));
   };
@@ -432,14 +432,13 @@ export default function FootballLeagueApp() {
       const rounds: Round[] = [];
 
       if (recordActiveS.type === 'TOURNAMENT') {
-        // BYE Logic
         const nextPowerOfTwo = Math.pow(2, Math.ceil(Math.log2(teams.length)));
         const matchesInFirstRound = nextPowerOfTwo / 2;
         let currentMatches: Match[] = [];
         for(let i=0; i < matchesInFirstRound; i++) {
           const h = teams[i*2];
           const a = teams[i*2+1];
-          if(!a) { // BYE
+          if(!a) { 
              currentMatches.push({
                id: `${recordActiveS.id}_R1_M${i}`, seasonId: recordActiveS.id,
                home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG,
@@ -461,7 +460,6 @@ export default function FootballLeagueApp() {
         }
         rounds.push({ round: 1, matches: currentMatches, seasonId: recordActiveS.id, name: `16강/8강` });
 
-        // Rest rounds
         let rIdx = 2;
         let mCount = matchesInFirstRound / 2;
         while(mCount >= 0.5) {
@@ -483,7 +481,6 @@ export default function FootballLeagueApp() {
           rIdx++;
         }
       } else {
-        // League Logic
         let allMatches: any[] = [];
         for(let i=0; i<teams.length; i++) {
           for(let j=i+1; j<teams.length; j++) {
@@ -597,7 +594,7 @@ export default function FootballLeagueApp() {
     }
   };
 
-  // Variables for View (Restored)
+  // Variables for View
   const targetTeamsBase = masterTeams.filter(t => t.category === manageTab);
   
   const leagueAdminTeams = masterTeams.filter(t => t.category === leagueManageTab);
@@ -643,7 +640,7 @@ export default function FootballLeagueApp() {
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {banners.map((b, i) => (<div key={b.id} className={`absolute inset-0 transition-opacity duration-1000 ${i===bannerIdx?'opacity-100 z-10':'opacity-0 z-0'}`}>{getBannerContent(b)}<div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent pointer-events-none"></div></div>))}
-        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_90_Final_Review</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
+        <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none"><h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1><p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. League Master P_91_Build_Fix</p><div className="mt-2 px-3 py-1 bg-black/50 rounded-lg inline-block border border-emerald-900/50"><span className="text-emerald-300 font-mono text-[10px] md:text-xs tracking-widest">{currentTime}</span></div></div>
       </div>
 
       <div className="flex justify-center flex-wrap gap-2 mt-6 mb-8 px-4">
