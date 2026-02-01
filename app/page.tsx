@@ -146,9 +146,24 @@ export default function FootballLeagueApp() {
       }
     }));
 
-    const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((t, i) => ({ ...t, rank: i+1, currentPrize: i===0?targetSeason.prizes.first:i===1?targetSeason.prizes.second:i===2?targetSeason.prizes.third:0 }));
+    // 🔥 [Fix] Prize Logic: Only assign if games played > 0
+    const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((t, i) => {
+        const played = t.win + t.draw + t.loss;
+        let prize = 0;
+        if (played > 0) {
+            if(i === 0) prize = targetSeason.prizes.first;
+            else if(i === 1) prize = targetSeason.prizes.second;
+            else if(i === 2) prize = targetSeason.prizes.third;
+        }
+        return { ...t, rank: i+1, currentPrize: prize };
+    });
+
     const ownerMap = new Map<string, any>();
-    teams.forEach(t => { if(!ownerMap.has(t.ownerName)) ownerMap.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, teamsCount:0}); const o = ownerMap.get(t.ownerName); o.win+=t.win; o.draw+=t.draw; o.loss+=t.loss; o.points+=t.points; o.prize+=(t.currentPrize||0); o.teamsCount++; });
+    teams.forEach(t => { 
+        if(!ownerMap.has(t.ownerName)) ownerMap.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, teamsCount:0}); 
+        const o = ownerMap.get(t.ownerName); 
+        o.win+=t.win; o.draw+=t.draw; o.loss+=t.loss; o.points+=t.points; o.prize+=(t.currentPrize||0); o.teamsCount++; 
+    });
     
     const highlights = targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl).map(m => {
         const winner = Number(m.homeScore) > Number(m.awayScore) ? m.home : Number(m.awayScore) > Number(m.homeScore) ? m.away : 'DRAW';
@@ -161,11 +176,16 @@ export default function FootballLeagueApp() {
 
   // --- History Data ---
   const historyData = useMemo(() => {
-      const ownerHist = new Map<string, any>(); const teamHist = new Map<string, any>(); const playerHist = new Map<string, any>();
+      // 🔥 [Update] Added Awards tracking
+      const ownerHist = new Map<string, any>(); 
+      const teamHist = new Map<string, any>(); 
+      const playerHist = new Map<string, any>();
+
       seasons.forEach(s => {
           if(!s.teams) return;
           const sTeamStats = new Map<string, any>();
           s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0 }));
+          
           s.rounds?.forEach(r => r.matches.forEach(m => {
               if(m.status === 'FINISHED' || m.status === 'BYE') {
                   const h = Number(m.homeScore||0), a = Number(m.awayScore||0);
@@ -178,11 +198,25 @@ export default function FootballLeagueApp() {
                   [...m.homeAssists, ...m.awayAssists].forEach(p => { const k = p.name; if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeAssists.includes(p)?m.home:m.away, teamLogo: m.homeAssists.includes(p)?m.homeLogo:m.awayLogo, owner: m.homeAssists.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0}); playerHist.get(k).assists += p.count; });
               }
           }));
+
           const sortedSeasonTeams = Array.from(sTeamStats.values()).sort((a,b)=>b.points-a.points);
+          
           sortedSeasonTeams.forEach((t, idx) => {
-              if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, titles:0});
-              const o = ownerHist.get(t.ownerName); o.win += t.win; o.draw += t.draw; o.loss += t.loss; o.points += t.points;
-              if(idx===0) { o.titles++; o.prize+=s.prizes.first; } else if(idx===1) o.prize+=s.prizes.second; else if(idx===2) o.prize+=s.prizes.third;
+              const played = t.win + t.draw + t.loss;
+              
+              // Owner
+              if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0});
+              const o = ownerHist.get(t.ownerName);
+              o.win += t.win; o.draw += t.draw; o.loss += t.loss; o.points += t.points;
+              
+              // 🔥 [Fix] Prize & Award Logic: Only if games played
+              if (played > 0) {
+                  if(idx===0) { o.golds++; o.prize+=s.prizes.first; }
+                  else if(idx===1) { o.silvers++; o.prize+=s.prizes.second; }
+                  else if(idx===2) { o.bronzes++; o.prize+=s.prizes.third; }
+              }
+
+              // Team
               if(!teamHist.has(t.name)) teamHist.set(t.name, {name:t.name, logo:t.logo, owner:t.ownerName, win:0, draw:0, loss:0, points:0});
               const tm = teamHist.get(t.name); tm.win+=t.win; tm.draw+=t.draw; tm.loss+=t.loss; tm.points+=t.points;
           });
@@ -301,7 +335,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_15_BuildFix</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_16_Logic_UI_Fix</p>
         </div>
       </div>
       
@@ -352,6 +386,7 @@ export default function FootballLeagueApp() {
                 </div>
               )}
 
+              {/* 🔥 [UI Fix] Owner Ranking: Removed 'Teams count' */}
               {rankingTab === 'OWNERS' && (
                   <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                       <table className="w-full text-left text-xs uppercase border-collapse">
@@ -362,7 +397,7 @@ export default function FootballLeagueApp() {
                               {activeRankingData.owners.map((o, i) => (
                                   <tr key={i} className="border-b border-slate-800/50">
                                       <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                      <td className="p-4 font-bold text-white">{o.name} <span className="text-[9px] text-slate-500 block">Teams: {o.teamsCount}</span></td>
+                                      <td className="p-4 font-bold text-white">{o.name}</td>
                                       <td className="p-4 text-center text-slate-400">{o.win}W {o.draw}D {o.loss}L</td>
                                       <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
                                       <td className="p-4 text-right text-yellow-500 font-bold">₩ {o.prize.toLocaleString()}</td>
@@ -388,7 +423,6 @@ export default function FootballLeagueApp() {
                                   .slice(0, 20).map((p,i)=>(
                                   <tr key={i} className="border-b border-slate-800/50">
                                       <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
-                                      {/* 🔥 Updated: Player + Owner */}
                                       <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                       <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                       <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
@@ -514,18 +548,31 @@ export default function FootballLeagueApp() {
                     </div>
                 )}
 
-                {/* 2. Owners History */}
+                {/* 2. Owners History - 🔥 [UI Fix] Awards Column Added & W/D/L Moved */}
                 {historyTab === 'OWNERS' && (
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                         <table className="w-full text-left text-xs uppercase">
-                            <thead className="bg-slate-900 text-slate-500"><tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-center">Pts</th><th className="p-4 text-right">Prize</th></tr></thead>
+                            <thead className="bg-slate-900 text-slate-500">
+                                <tr>
+                                    <th className="p-4 w-8">#</th>
+                                    <th className="p-4">Owner</th>
+                                    <th className="p-4 text-center">W/D/L</th>
+                                    <th className="p-4 text-center">Awards</th>
+                                    <th className="p-4 text-right">Prize</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 {historyData.owners.map((o, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className={`p-4 text-center font-bold ${i<3?'text-yellow-400':'text-slate-600'}`}>{i+1}</td>
-                                        <td className="p-4 font-bold text-white">{o.name} <span className="text-[9px] text-slate-500 block">{o.win}W {o.draw}D {o.loss}L</span></td>
-                                        <td className="p-4 text-center text-yellow-400 font-bold">{o.titles > 0 ? `🏆 ${o.titles}` : '-'}</td>
-                                        <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
+                                        <td className="p-4 font-bold text-white">{o.name}</td>
+                                        <td className="p-4 text-center text-slate-400">{o.win}W {o.draw}D {o.loss}L</td>
+                                        <td className="p-4 text-center">
+                                            {o.golds>0 && <span className="mr-1">🥇{o.golds}</span>}
+                                            {o.silvers>0 && <span className="mr-1">🥈{o.silvers}</span>}
+                                            {o.bronzes>0 && <span>🥉{o.bronzes}</span>}
+                                            {o.golds+o.silvers+o.bronzes===0 && <span className="text-slate-700">-</span>}
+                                        </td>
                                         <td className="p-4 text-right text-slate-300">₩ {o.prize.toLocaleString()}</td>
                                     </tr>
                                 ))}
@@ -550,7 +597,6 @@ export default function FootballLeagueApp() {
                                     .slice(0, 20).map((p, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className="p-3 text-center text-slate-600">{i+1}</td>
-                                        {/* 🔥 Updated: Player + Owner */}
                                         <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                         <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                         <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
@@ -662,7 +708,7 @@ export default function FootballLeagueApp() {
 
       {/* 🔥 [Updated] Footer */}
       <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
-          <p className="text-slate-500 text-xs mb-1 font-bold">게임은 eFootball 2025 기반으로 게임을 진행 합니다.</p>
+          <p className="text-slate-500 text-xs mb-1 font-bold">본 시합은 KONAMI 社의 eFOOTBALL로 게임이 진행 됩니다.</p>
           <p className="text-slate-500 text-xs mb-6">게임 참여 문의 : joycbue@gmail.com</p>
           <div className="flex justify-center gap-6">
               <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
