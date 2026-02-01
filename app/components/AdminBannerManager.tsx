@@ -67,6 +67,7 @@ export const AdminBannerManager = ({ banners }: Props) => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {banners.map(b => (
           <div key={b.id} onClick={() => handleEditClick(b)} className={`relative group cursor-pointer rounded-xl overflow-hidden border transition-all aspect-video ${editId === b.id ? 'border-orange-500 ring-2' : 'border-slate-800'}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={getThumbnail(b.url)} alt={b.title} className="w-full h-full object-cover opacity-70 group-hover:opacity-100" onError={(e:any)=>e.target.src="https://via.placeholder.com/300x169?text=No+Image"} />
             <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-2"><p className="text-[10px] text-white font-bold truncate">{b.title}</p></div>
           </div>

@@ -5,7 +5,7 @@ import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'fireb
 import { League, MasterTeam, DEFAULT_LEAGUES, FALLBACK_IMG, getTierColor, getSortedTeamsLogic, getSortedLeagues } from '../types';
 
 // ==========================================
-// 1. 리그/지역 관리자 (AdminLeagueManager)
+// 1. 리그/지역 관리자
 // ==========================================
 interface LeagueProps {
   leagues: League[];
@@ -19,11 +19,9 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: LeagueProps) => {
   const [editLeagueId, setEditLeagueId] = useState<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
-  // 인기도 정렬 적용
-  const sortedLeagues = useMemo(() => {
+  const filteredLeagues = useMemo(() => {
     const list = leagues.filter(l => l.category === categoryTab);
     return list.sort((a,b) => {
-       // types.ts에 있는 로직과 유사하게 내부 정렬
        const rankA = DEFAULT_LEAGUES.indexOf(a.name);
        const rankB = DEFAULT_LEAGUES.indexOf(b.name);
        return (rankA === -1 ? 99 : rankA) - (rankB === -1 ? 99 : rankB);
@@ -79,16 +77,16 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: LeagueProps) => {
           <input value={leagueName} onChange={e=>setLeagueName(e.target.value)} className="bg-slate-900 p-3 rounded-xl border border-slate-700 text-sm outline-none focus:border-yellow-500" placeholder="리그 이름" />
           <div className="flex gap-2">
             <input value={leagueLogo} onChange={e=>setLeagueLogo(e.target.value)} className="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 text-sm outline-none focus:border-yellow-500" placeholder="로고 URL" />
-            {leagueLogo && <img src={leagueLogo} className={getLeagueLogoStyle(categoryTab==='NATIONAL')} onError={(e:any)=>e.target.src=FALLBACK_IMG} />}
+            {leagueLogo && <img src={leagueLogo} className={getLeagueLogoStyle(categoryTab==='NATIONAL')} alt="preview" onError={(e:any)=>e.target.src=FALLBACK_IMG} />}
           </div>
         </div>
         <button onClick={handleSave} className={`w-full mt-4 py-3 rounded-xl font-bold text-black ${editLeagueId ? 'bg-orange-500' : 'bg-yellow-600'}`}>{editLeagueId ? '수정 저장' : '등록하기'}</button>
       </div>
 
       <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-        {sortedLeagues.map(l => (
+        {filteredLeagues.map(l => (
           <div key={l.id} onClick={() => handleEdit(l)} className={`relative p-3 rounded-xl border cursor-pointer flex flex-col items-center gap-2 ${editLeagueId===l.id ? 'border-orange-500 bg-orange-900/20' : 'border-slate-800 bg-slate-950 hover:border-yellow-500'}`}>
-            <img src={l.logo} className={getLeagueLogoStyle(categoryTab==='NATIONAL')} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+            <img src={l.logo} className={getLeagueLogoStyle(categoryTab==='NATIONAL')} alt={l.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
             <span className="text-[10px] text-center font-bold text-slate-300">{l.name}</span>
             <button onClick={(e)=>{e.stopPropagation(); handleDelete(l)}} className="absolute top-1 right-1 text-slate-600 hover:text-red-500 text-lg leading-none">×</button>
           </div>
@@ -99,7 +97,7 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: LeagueProps) => {
 };
 
 // ==========================================
-// 2. 팀 관리자 (AdminTeamManager)
+// 2. 팀 관리자
 // ==========================================
 interface TeamProps {
   leagues: League[];
@@ -116,7 +114,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
   const [manualTeam, setManualTeam] = useState<MasterTeam>({ name: '', logo: '', category: 'CLUB', region: '', tier: 'A' });
   const [bulkInput, setBulkInput] = useState('');
   const [visibleCount, setVisibleCount] = useState(18);
-  const [showAllTeams, setShowAllTeams] = useState(false); // 전체 보기 강제 토글
+  const [showAllTeams, setShowAllTeams] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
   const handleCategoryChange = (cat: 'CLUB' | 'NATIONAL') => {
@@ -124,13 +122,11 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
     setManualTeam({ name: '', logo: '', category: cat, region: '', tier: 'A' });
   };
 
-  // 🔥 Computes: Sort Leagues by Popularity
   const leagueRegions = useMemo(() => {
     const names = Array.from(new Set([...leagues.filter(l=>l.category===categoryTab).map(l=>l.name), '무소속']));
     return getSortedLeagues(names);
   }, [leagues, categoryTab]);
   
-  // 🔥 Computes: League List with Data (for Grid View)
   const leagueGridData = useMemo(() => {
     return leagueRegions.map(r => {
         const lInfo = leagues.find(l => l.name === r);
@@ -150,7 +146,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
   const getLogoStyle = (isNational: boolean) => isNational ? "w-10 h-10 rounded-full bg-white object-cover shadow-md" : "w-10 h-10 rounded-full bg-white object-contain p-1 shadow-md";
   const getLeagueLogoStyle = (isNational: boolean) => isNational ? "w-12 h-12 rounded-full bg-white object-cover shadow-lg" : "w-12 h-12 rounded-full bg-white object-contain p-1.5 shadow-lg";
 
-  // Handlers
   const handleSave = async () => {
     if (!manualTeam.name) return alert("팀 이름을 입력하세요.");
     const payload = { ...manualTeam, category: categoryTab };
@@ -178,7 +173,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
     await batch.commit();
   };
 
-  // 🔥 View Mode Logic
   const isLeagueGridView = manageRegion === 'ALL' && !showAllTeams && !manageSearch;
 
   return (
@@ -197,7 +191,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
          <button onClick={() => setIsTierEditMode(!isTierEditMode)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all h-[34px] ${isTierEditMode?'bg-purple-600 text-white animate-pulse':'bg-slate-800 text-purple-400 border border-purple-900'}`}>⚡ 등급 변경 모드</button>
       </div>
 
-      {/* 🔥 [Mode 1] League Grid View (Default) */}
       {isLeagueGridView && (
         <div className="animate-in fade-in">
             <div className="flex justify-between items-center mb-2 px-1">
@@ -207,7 +200,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
             <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
                 {leagueGridData.map((l, idx) => (
                     <div key={idx} onClick={() => setManageRegion(l.name)} className="relative p-4 rounded-xl border border-slate-800 bg-slate-950 flex flex-col items-center gap-2 cursor-pointer hover:border-emerald-500 transition-all hover:scale-105">
-                        <img src={l.logo} className={getLeagueLogoStyle(categoryTab === 'NATIONAL')} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                        <img src={l.logo} className={getLeagueLogoStyle(categoryTab === 'NATIONAL')} alt={l.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                         <span className="text-[10px] text-center font-bold text-slate-300">{l.name}</span>
                         <span className="text-[9px] bg-slate-800 px-2 py-0.5 rounded-full text-slate-500">{l.count} teams</span>
                     </div>
@@ -216,7 +209,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
         </div>
       )}
 
-      {/* 🔥 [Mode 2] Team Grid View (Filtered or All) */}
       {!isLeagueGridView && (
         <div className="animate-in fade-in">
             {manageRegion !== 'ALL' && (
@@ -229,7 +221,7 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
             <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
                 {filteredTeams.slice(0, visibleCount).map(t => (
                 <div key={t.id} onClick={() => { if(!isTierEditMode) { setEditTeamId(t.id!); setManualTeam(t); formRef.current?.scrollIntoView({behavior:'smooth'}); }}} className={`relative p-3 rounded-xl border cursor-pointer flex flex-col items-center gap-2 ${editTeamId===t.id?'border-emerald-500 bg-emerald-900/10':'border-slate-800 bg-slate-950 hover:border-emerald-500'}`}>
-                    <img src={t.logo} className={getLogoStyle(t.category==='NATIONAL')} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                    <img src={t.logo} className={getLogoStyle(t.category==='NATIONAL')} alt={t.name} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                     <span className="text-[10px] text-center font-bold truncate w-full text-slate-300">{t.name}</span>
                     {isTierEditMode ? <div className="flex gap-0.5">{['S','A','B','C'].map(tier=><button key={tier} onClick={(e)=>{e.stopPropagation(); handleQuickTier(t.id!, tier)}} className={`w-4 h-4 text-[8px] rounded ${t.tier===tier?getTierColor(tier):'bg-slate-800 border border-slate-700 text-slate-500'}`}>{tier}</button>)}</div> : <div className="flex items-center gap-1"><span className="text-[9px] text-slate-500">{t.region}</span><span className={`text-[9px] font-bold px-1 rounded ${getTierColor(t.tier).replace('border-','text-').replace('bg-','bg-opacity-20 ')}`}>{t.tier}</span></div>}
                     {!isTierEditMode && <button onClick={(e)=>{e.stopPropagation(); handleDelete(t.id!)}} className="absolute top-1 right-1 text-slate-700 hover:text-red-500 text-lg leading-none">×</button>}
@@ -240,7 +232,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: TeamProps) => {
         </div>
       )}
 
-      {/* 입력 폼 (항상 하단에 노출되도록 배치, 단 리그 그리드 뷰일때는 숨김 가능하나 편의상 유지) */}
       {!isLeagueGridView && (
           <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 mt-6" ref={formRef}>
              <div className="flex justify-between items-center mb-4">
