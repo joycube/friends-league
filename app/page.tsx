@@ -27,6 +27,9 @@ export default function FootballLeagueApp() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState('');
 
+  // 🔥 [Fix] Missing State Restored
+  const [currentTime, setCurrentTime] = useState<string>('');
+
   // Data State
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -65,7 +68,11 @@ export default function FootballLeagueApp() {
   const [recordInputs, setRecordInputs] = useState({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
 
   // --- Effects ---
-  // Banner Rotation: Video Priority & Duration
+  useEffect(() => {
+    const t = setInterval(() => setCurrentTime(new Date().toLocaleString()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     if (banners.length === 0) return;
     
@@ -295,12 +302,12 @@ export default function FootballLeagueApp() {
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
-          <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_12_Final_Polish</p>
+          <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_03_13_Footer_Update</p>
         </div>
       </div>
       
-      {/* 🟢 [NEW] FC25 Style Tile Navigation */}
+      {/* 🟢 Navigation */}
       <div className="max-w-6xl mx-auto px-4 mt-6 mb-8">
           <div className="grid grid-cols-5 gap-2">
               {['RANKING', 'SCHEDULE', 'HISTORY', 'TUTORIAL', 'ADMIN'].map(t => (
@@ -383,7 +390,8 @@ export default function FootballLeagueApp() {
                                   .slice(0, 20).map((p,i)=>(
                                   <tr key={i} className="border-b border-slate-800/50">
                                       <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
-                                      <td className="p-3 font-bold text-white">{p.name}</td>
+                                      {/* 🔥 Updated: Player + Owner */}
+                                      <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                       <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                       <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
                                   </tr>
@@ -425,27 +433,22 @@ export default function FootballLeagueApp() {
                 
                 {seasons.find(s=>s.id===viewSeasonId)?.rounds?.map((r, rIdx) => (
                     <div key={rIdx} className="space-y-2">
-                        <h3 className="text-xl font-bold text-slate-200 pl-3 border-l-4 border-emerald-500 italic">{r.name}</h3>
-                        <div className="grid md:grid-cols-1 gap-3">
+                        <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500">{r.name}</h3>
+                        <div className="grid md:grid-cols-1 gap-2">
                             {r.matches.map(m => (
                                 <div key={m.id} onClick={() => handleMatchClick(m)} className={`relative bg-slate-950 p-3 rounded-xl border ${m.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}>
-                                    {/* Header */}
                                     <div className="flex justify-between items-center mb-2">
-                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded">{m.matchLabel || 'Match'}</span>
-                                        {m.youtubeUrl && <span className="text-red-500 text-[10px] font-bold flex items-center gap-1">▶ Highlights</span>}
+                                        <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded">{m.matchLabel || 'Match'}</span>
+                                        {m.youtubeUrl && <span className="text-red-500 text-[9px] font-bold flex items-center gap-1">▶ Highlights</span>}
                                     </div>
-                                    
-                                    {/* Scoreboard */}
                                     <div className="flex justify-between items-center">
-                                        {/* Home */}
                                         <div className="flex flex-col items-center w-1/3 gap-1">
-                                            <img src={m.homeLogo} className="w-12 h-12 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                            <span className="text-sm font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
+                                            <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                            <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
                                         </div>
-                                        {/* Score */}
                                         <div className="flex flex-col items-center">
                                             {m.status === 'FINISHED' ? (
-                                                <div className="flex items-center gap-2 text-4xl font-black italic text-white tracking-tighter">
+                                                <div className="flex items-center gap-2 text-3xl font-black italic text-white tracking-tighter">
                                                     <span className={Number(m.homeScore)>Number(m.awayScore)?'text-emerald-400':''}>{m.homeScore}</span>
                                                     <span className="text-slate-700 text-xl">:</span>
                                                     <span className={Number(m.awayScore)>Number(m.homeScore)?'text-emerald-400':''}>{m.awayScore}</span>
@@ -454,21 +457,18 @@ export default function FootballLeagueApp() {
                                                 <div className="bg-slate-900 px-3 py-1 rounded text-xs font-bold text-slate-500">VS</div>
                                             )}
                                         </div>
-                                        {/* Away */}
                                         <div className="flex flex-col items-center w-1/3 gap-1">
-                                            <img src={m.awayLogo} className="w-12 h-12 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                            <span className="text-sm font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
+                                            <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                            <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
                                         </div>
                                     </div>
-
-                                    {/* Stats (Compact) */}
                                     {m.status === 'FINISHED' && (
-                                        <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[10px]">
-                                            <div className="text-right space-y-0.5 pr-2 border-r border-slate-800">
+                                        <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[9px]">
+                                            <div className="text-center space-y-0.5">
                                                 {m.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name}</div>)}
                                                 {m.homeAssists.map((s, idx)=><div key={`ha-${idx}`} className="text-slate-500">🅰️ {s.name}</div>)}
                                             </div>
-                                            <div className="text-left space-y-0.5 pl-2">
+                                            <div className="text-center space-y-0.5">
                                                 {m.awayScorers.map((s, idx)=><div key={`ag-${idx}`} className="text-slate-300">⚽ {s.name}</div>)}
                                                 {m.awayAssists.map((s, idx)=><div key={`aa-${idx}`} className="text-slate-500">🅰️ {s.name}</div>)}
                                             </div>
@@ -506,7 +506,7 @@ export default function FootballLeagueApp() {
                                 {historyData.teams.slice(0, 20).map((t, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className="p-4 text-center text-slate-600">{i+1}</td>
-                                        <td className="p-4 font-bold text-white flex items-center gap-2"><img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5"/>{t.name}</td>
+                                        <td className="p-4 font-bold text-white flex items-center gap-2"><img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5"/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span></td>
                                         <td className="p-4 text-center text-slate-400">{t.win}W {t.draw}D {t.loss}L</td>
                                         <td className="p-4 text-right text-emerald-400 font-bold">{t.points}</td>
                                     </tr>
@@ -525,8 +525,8 @@ export default function FootballLeagueApp() {
                                 {historyData.owners.map((o, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className={`p-4 text-center font-bold ${i<3?'text-yellow-400':'text-slate-600'}`}>{i+1}</td>
-                                        <td className="p-4 font-bold text-white">{o.name} {o.titles>0 && <span className="text-[9px] text-yellow-400 ml-1">🏆x{o.titles}</span>}</td>
-                                        <td className="p-4 text-center text-slate-400">{o.win}W {o.draw}D {o.loss}L</td>
+                                        <td className="p-4 font-bold text-white">{o.name} <span className="text-[9px] text-slate-500 block">{o.win}W {o.draw}D {o.loss}L</span></td>
+                                        <td className="p-4 text-center text-yellow-400 font-bold">{o.titles > 0 ? `🏆 ${o.titles}` : '-'}</td>
                                         <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
                                         <td className="p-4 text-right text-slate-300">₩ {o.prize.toLocaleString()}</td>
                                     </tr>
@@ -552,7 +552,8 @@ export default function FootballLeagueApp() {
                                     .slice(0, 20).map((p, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className="p-3 text-center text-slate-600">{i+1}</td>
-                                        <td className="p-3 font-bold text-white">{p.name}</td>
+                                        {/* 🔥 Updated: Player + Owner */}
+                                        <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                         <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                         <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
                                     </tr>
@@ -564,28 +565,16 @@ export default function FootballLeagueApp() {
             </div>
         )}
 
-        {/* VIEW 4: TUTORIAL (NEW) */}
+        {/* VIEW 4: TUTORIAL */}
         {currentView === 'TUTORIAL' && (
             <div className="space-y-6 animate-in fade-in">
                 <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800">
                     <h2 className="text-xl font-bold text-emerald-400 mb-4">📘 리그 운영 가이드</h2>
                     <div className="space-y-6 text-sm text-slate-300">
-                        <div>
-                            <h3 className="text-white font-bold mb-1">1. 오너 생성 (ADMIN)</h3>
-                            <p>어드민 메뉴의 '오너 관리' 탭에서 참가할 오너(플레이어)를 먼저 등록하세요. 닉네임과 프로필 사진 URL을 입력하면 됩니다.</p>
-                        </div>
-                        <div>
-                            <h3 className="text-white font-bold mb-1">2. 시즌/게임 생성</h3>
-                            <p>'새 시즌' 탭에서 시즌 이름, 타입(리그/토너먼트), 상금을 설정하고 생성합니다.</p>
-                        </div>
-                        <div>
-                            <h3 className="text-white font-bold mb-1">3. 팀 배정</h3>
-                            <p>생성된 시즌 ID를 선택하고, 오너에게 팀을 배정합니다. 필터를 사용하여 원하는 리그의 팀을 찾거나 랜덤 배정 기능을 활용하세요.</p>
-                        </div>
-                        <div>
-                            <h3 className="text-white font-bold mb-1">4. 스케줄 & 기록</h3>
-                            <p>팀 배정이 완료되면 자동으로 대진표가 생성됩니다. 'SCHEDULE' 메뉴에서 각 경기를 클릭하여 스코어, 득점자, 어시스트, 유튜브 링크를 입력하세요.</p>
-                        </div>
+                        <div><h3 className="text-white font-bold mb-1">1. 오너 생성 (ADMIN)</h3><p>어드민 메뉴의 '오너 관리' 탭에서 참가할 오너(플레이어)를 먼저 등록하세요.</p></div>
+                        <div><h3 className="text-white font-bold mb-1">2. 시즌/게임 생성</h3><p>'새 시즌' 탭에서 시즌 이름, 타입(리그/토너먼트), 상금을 설정하고 생성합니다.</p></div>
+                        <div><h3 className="text-white font-bold mb-1">3. 팀 배정</h3><p>생성된 시즌 ID를 선택하고, 오너에게 팀을 배정합니다. 필터를 사용하여 원하는 리그의 팀을 찾거나 랜덤 배정 기능을 활용하세요.</p></div>
+                        <div><h3 className="text-white font-bold mb-1">4. 스케줄 & 기록</h3><p>팀 배정이 완료되면 자동으로 대진표가 생성됩니다. 'SCHEDULE' 메뉴에서 각 경기를 클릭하여 스코어, 득점자, 어시스트, 유튜브 링크를 입력하세요.</p></div>
                     </div>
                 </div>
             </div>
@@ -672,6 +661,24 @@ export default function FootballLeagueApp() {
            </div>
         )}
       </main>
+
+      {/* 🔥 [Updated] Footer */}
+      <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
+          <p className="text-slate-500 text-xs mb-1 font-bold">게임은 eFootball 2025 기반으로 게임을 진행 합니다.</p>
+          <p className="text-slate-500 text-xs mb-6">게임 참여 문의 : joycbue@gmail.com</p>
+          <div className="flex justify-center gap-6">
+              <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6"/>
+              </a>
+              <a href="https://www.konami.com/efootball/ko/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="eFootball Official">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/football.png" className="w-6 h-6"/>
+              </a>
+              <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="YouTube Channel">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/youtube-play.png" className="w-6 h-6"/>
+              </a>
+          </div>
+          <p className="text-[9px] text-slate-700 mt-4 uppercase tracking-widest">© 2026 eFootball Live Evolution League</p>
+      </footer>
 
       {editingMatch && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4">
