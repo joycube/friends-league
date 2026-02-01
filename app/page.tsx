@@ -48,8 +48,8 @@ export default function FootballLeagueApp() {
   const [inputLeagueMode, setInputLeagueMode] = useState<'SINGLE' | 'DOUBLE'>('SINGLE');
   const [inputTotalPrize, setInputTotalPrize] = useState(100000);
   
-  // 🔥 [Fix] Prize States
-  const [prizes, setPrizes] = useState({ first: 50000, second: 20000, third: 10000, scorer: 10000, assist: 10000 });
+  // 🔥 [Fix] Prizes: Removed Assist, Adjusted for 4 categories
+  const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000, assist: 0 }); 
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
   const [newOwnerName, setNewOwnerName] = useState('');
@@ -87,15 +87,15 @@ export default function FootballLeagueApp() {
     return () => clearTimeout(t);
   }, [bannerIdx, banners]);
 
-  // 🔥 [Fix] Auto Prize Logic - Only runs when isAutoPrize is true
+  // 🔥 [Fix] Auto Prize Logic: 50% / 30% / 10% / 10% (No Assist Prize)
   useEffect(() => { 
     if (isAutoPrize) {
       setPrizes({ 
         first: Math.floor(inputTotalPrize * 0.5), 
-        second: Math.floor(inputTotalPrize * 0.2), 
+        second: Math.floor(inputTotalPrize * 0.3), 
         third: Math.floor(inputTotalPrize * 0.1), 
         scorer: Math.floor(inputTotalPrize * 0.1), 
-        assist: Math.floor(inputTotalPrize * 0.1) 
+        assist: 0 
       }); 
     }
   }, [inputTotalPrize, isAutoPrize]);
@@ -148,7 +148,6 @@ export default function FootballLeagueApp() {
       }
     }));
 
-    // 🔥 [Fix] Prize Logic: 경기 수가 0이면 상금 0
     const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((t, i) => {
         const played = t.win + t.draw + t.loss;
         let prize = 0;
@@ -232,7 +231,15 @@ export default function FootballLeagueApp() {
   const handleRecordInputChange = (type: string, field: string, value: string) => { setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } })); };
   const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
   const handleEditOwnerClick = (o: Owner) => { setEditOwnerId(o.docId!); setNewOwnerName(o.nickname); setNewOwnerPhoto(o.photo); };
-  const handleCreateSeason = async () => { if(inputSeasonName) { const id=Date.now(); await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); alert("게임 생성 완료! 팀을 배정해주세요."); } else { alert("시즌 이름 입력 필요"); } };
+  
+  // 🔥 [Fix] Create Season with Correct Prize State
+  const handleCreateSeason = async () => { 
+    if(inputSeasonName) { 
+      const id=Date.now(); 
+      await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); 
+      setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); alert("게임 생성 완료! 팀을 배정해주세요."); 
+    } else { alert("시즌 이름 입력 필요"); } 
+  };
   const handleDeleteBanner = async (id:string) => { if(confirm("배너 삭제?")) await deleteDoc(doc(db,"banners",id)); };
   
   const handleQuickAssign = async (team: MasterTeam) => {
@@ -255,14 +262,13 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [Fix] Improved Schedule Logic (Fixed undefined issue)
+  // 🔥 [Fix] Improved Schedule Logic (Safety against undefined)
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
     let shuffled = [...teams].sort(() => Math.random() - 0.5);
     const rounds: Round[] = [];
 
     // [TOURNAMENT]
     if(s.type === 'TOURNAMENT') {
-        // Owner Conflict Check
         for(let i=0; i<shuffled.length-1; i+=2) {
             if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) {
                 for(let j=i+2; j<shuffled.length; j++) {
@@ -278,7 +284,7 @@ export default function FootballLeagueApp() {
         for(let i=0; i<matchCount; i++) {
            const h = shuffled[i*2], a = shuffled[i*2+1];
            const stageName = getTournamentStageName(nextPow2, matchCount);
-           // 🔥 [Fix] Using null instead of undefined for Firestore
+           // 🔥 [Fix] Ensure null, not undefined
            matches.push(a ? 
              { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } 
              : 
@@ -291,70 +297,52 @@ export default function FootballLeagueApp() {
         while(currentCount >= 0.5) {
             let nextMatches: Match[] = []; const stageName = getTournamentStageName(nextPow2, currentCount);
             for(let i=0; i < Math.ceil(currentCount); i++) {
-                nextMatches.push({ id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: currentCount > 0.5 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : undefined });
+                // 🔥 [Fix] Check for Final Match to avoid undefined nextMatchId
+                const nextId = currentCount > 0.5 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : undefined; 
+                // Firestore doesn't like undefined, so strict check or omit if undefined? 
+                // Better to put null if undefined is risky, but here we can just use conditional object property or explicitly null.
+                // Let's use null if it's the final.
+                
+                nextMatches.push({ 
+                    id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, 
+                    home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', 
+                    homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], 
+                    status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, 
+                    nextMatchId: nextId || null // 🔥 Forced Null
+                }); 
             }
             rounds.push({ round: rIdx, matches: nextMatches, seasonId: s.id, name: stageName });
             if(currentCount === 0.5) break; currentCount /= 2; rIdx++;
         }
     } 
-    // [LEAGUE - Polygon Method]
+    // [LEAGUE]
     else {
         const dummyTeam = {id:0, seasonId:s.id, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0};
         if(shuffled.length % 2 !== 0) shuffled.push(dummyTeam as Team);
-        
-        const numTeams = shuffled.length;
-        const numRounds = numTeams - 1;
-        const half = numTeams / 2;
-        
+        const numTeams = shuffled.length; const numRounds = numTeams - 1; const half = numTeams / 2;
         let teamsArr = [...shuffled];
 
         for(let r = 0; r < numRounds; r++) {
             const roundMatches: Match[] = [];
             for(let i = 0; i < half; i++) {
-                const home = teamsArr[i];
-                const away = teamsArr[numTeams - 1 - i];
-                
+                const home = teamsArr[i]; const away = teamsArr[numTeams - 1 - i];
                 if(home.name !== 'BYE' && away.name !== 'BYE') {
                     roundMatches.push({
-                        id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id,
-                        home: home.name, away: away.name,
-                        homeLogo: home.logo, awayLogo: away.logo,
-                        homeOwner: home.ownerName, awayOwner: away.ownerName,
-                        homeScore: '', awayScore: '',
-                        homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [],
-                        status: 'UPCOMING', youtubeUrl: '',
-                        stage: `Round ${r+1}`, matchLabel: `Game ${i+1}`
+                        id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName,
+                        homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}`, matchLabel: `Game ${i+1}`
                     });
                 }
             }
             rounds.push({round: r+1, matches: roundMatches, seasonId: s.id, name: `Round ${r+1}`});
-            
-            // Rotate Array (Keep index 0 fixed, rotate others)
-            const first = teamsArr[0];
-            const rest = teamsArr.slice(1);
+            const first = teamsArr[0]; const rest = teamsArr.slice(1);
             teamsArr = [first, rest[rest.length - 1], ...rest.slice(0, rest.length - 1)];
         }
-
-        // Double Round
         if(s.leagueMode === 'DOUBLE') {
             const initialRoundsCount = rounds.length;
             const newRounds: Round[] = [];
-            
             rounds.forEach((r, idx) => {
-                const returnMatches = r.matches.map(m => ({
-                    ...m,
-                    id: m.id + '_return',
-                    home: m.away, away: m.home,
-                    homeLogo: m.awayLogo, awayLogo: m.homeLogo,
-                    homeOwner: m.awayOwner, awayOwner: m.homeOwner,
-                    stage: `Round ${initialRoundsCount + idx + 1}`
-                }));
-                newRounds.push({
-                    round: initialRoundsCount + idx + 1,
-                    matches: returnMatches,
-                    seasonId: s.id,
-                    name: `Round ${initialRoundsCount + idx + 1}`
-                });
+                const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` }));
+                newRounds.push({ round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` });
             });
             rounds.push(...newRounds);
         }
@@ -386,7 +374,6 @@ export default function FootballLeagueApp() {
   };
 
   const handleRemoveTeamFromSeason = async (tid:number) => { if(confirm("제외하시겠습니까?")) await updateDoc(doc(db,"seasons",String(adminTab)), {teams:seasons.find(s=>s.id===adminTab)?.teams?.filter(t=>t.id!==tid)}); };
-  // 🔥 [Fix] handleMatchClick defined HERE before use
   const handleMatchClick = (m: Match) => { setEditingMatch({...m}); setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl}); };
   
   const saveMatchResult = async () => {
@@ -500,7 +487,6 @@ export default function FootballLeagueApp() {
                                   .slice(0, 20).map((p,i)=>(
                                   <tr key={i} className="border-b border-slate-800/50">
                                       <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
-                                      {/* 🔥 Updated: Player + Owner */}
                                       <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
                                       <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
                                       <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
@@ -754,7 +740,6 @@ export default function FootballLeagueApp() {
                                         <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
-                                        <div className="col-span-2"><label className="text-[10px] text-slate-500">🅰️ Assist (Optional)</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                     </div>
                                 )}
                             </div>
@@ -809,6 +794,24 @@ export default function FootballLeagueApp() {
            </div>
         )}
       </main>
+
+      {/* 🔥 [Updated] Footer */}
+      <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
+          <p className="text-slate-500 text-xs mb-1 font-bold">본 시합은 KONAMI 社의 eFOOTBALL로 게임이 진행 됩니다.</p>
+          <p className="text-slate-500 text-xs mb-6">게임 참여 문의 : joycbue@gmail.com</p>
+          <div className="flex justify-center gap-6">
+              <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6" alt="Konami"/>
+              </a>
+              <a href="https://www.konami.com/efootball/ko/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="eFootball Official">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/football.png" className="w-6 h-6" alt="eFootball"/>
+              </a>
+              <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="YouTube Channel">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/youtube-play.png" className="w-6 h-6" alt="YouTube"/>
+              </a>
+          </div>
+          <p className="text-[9px] text-slate-700 mt-4 uppercase tracking-widest">© 2026 eFootball Live Evolution League</p>
+      </footer>
 
       {editingMatch && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4">
