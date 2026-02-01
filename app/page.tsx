@@ -13,7 +13,7 @@ import { AdminBannerManager } from './components/AdminBannerManager';
 export default function FootballLeagueApp() {
   const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'ADMIN' | 'TUTORIAL'>('RANKING');
   const [rankingTab, setRankingTab] = useState<'STANDINGS' | 'SCHEDULE' | 'OWNERS' | 'PLAYERS' | 'HIGHLIGHTS'>('STANDINGS');
-  const [historyTab, setHistoryTab] = useState<'OWNERS' | 'TEAMS'>('OWNERS');
+  const [historyTab, setHistoryTab] = useState<'TEAMS' | 'OWNERS' | 'PLAYERS'>('TEAMS'); // 🔥 History Tabs
   const [adminTab, setAdminTab] = useState<number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS'>('NEW');
   
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
@@ -31,7 +31,7 @@ export default function FootballLeagueApp() {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
-  // New Season Input
+  // Inputs
   const [inputSeasonName, setInputSeasonName] = useState('');
   const [inputSeasonType, setInputSeasonType] = useState<'LEAGUE' | 'TOURNAMENT'>('LEAGUE');
   const [inputLeagueMode, setInputLeagueMode] = useState<'SINGLE' | 'DOUBLE'>('SINGLE');
@@ -39,14 +39,14 @@ export default function FootballLeagueApp() {
   const [prizes, setPrizes] = useState({ first: 50000, second: 20000, third: 10000, scorer: 10000, assist: 10000 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
-  // Admin Basic
+  // Admin
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
   const [bannerTitle, setBannerTitle] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
 
-  // Assignments Filters
+  // Assignments
   const [selOwnerId, setSelOwnerId] = useState<number | ''>('');
   const [assignCategory, setAssignCategory] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL'); 
   const [assignRegion, setAssignRegion] = useState<string>('ALL'); 
@@ -92,6 +92,13 @@ export default function FootballLeagueApp() {
     return () => { u1(); u2(); u3(); u4(); u5(); };
   }, []);
 
+  // --- Helper: YouTube Thumbnail ---
+  const getYouTubeThumbnail = (url: string) => {
+    if (!url) return FALLBACK_IMG;
+    const vId = url.includes('youtu.be') ? url.split('/').pop() : url.split('v=')[1]?.split('&')[0];
+    return vId ? `https://img.youtube.com/vi/${vId}/mqdefault.jpg` : FALLBACK_IMG;
+  };
+
   // --- Memos: Current Ranking ---
   const activeRankingData = useMemo(() => {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
@@ -120,7 +127,6 @@ export default function FootballLeagueApp() {
         currentPrize: i===0?targetSeason.prizes.first:i===1?targetSeason.prizes.second:i===2?targetSeason.prizes.third:0 
     }));
 
-    // Owners with W/D/L
     const ownerMap = new Map<string, any>();
     teams.forEach(t => { 
         if(!ownerMap.has(t.ownerName)) ownerMap.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, teamsCount:0}); 
@@ -128,7 +134,11 @@ export default function FootballLeagueApp() {
         o.win+=t.win; o.draw+=t.draw; o.loss+=t.loss; o.points+=t.points; o.prize+=(t.currentPrize||0); o.teamsCount++;
     });
 
-    const highlights = targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl) || [];
+    const highlights = targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl).map(m => {
+        const winner = Number(m.homeScore) > Number(m.awayScore) ? m.home : Number(m.awayScore) > Number(m.homeScore) ? m.away : 'DRAW';
+        const winnerLogo = winner === m.home ? m.homeLogo : winner === m.away ? m.awayLogo : FALLBACK_IMG;
+        return { ...m, winner, winnerLogo };
+    }) || [];
 
     return { 
         teams, 
@@ -140,18 +150,12 @@ export default function FootballLeagueApp() {
 
   // 🔥 [Core Logic] History Aggregation (All Time)
   const historyData = useMemo(() => {
-      const ownerHist = new Map<string, any>(); // { name, win, draw, loss, points, prize, titles }
-      // const teamHist = new Map<string, any>(); // (If needed later)
+      const ownerHist = new Map<string, any>(); 
+      const teamHist = new Map<string, any>();
+      const playerHist = new Map<string, any>();
 
       seasons.forEach(s => {
           if(!s.teams) return;
-          // Calculate rank for this season to find Champion
-          // Re-calculate basic stats per season since `teams` in DB might be initial state (better to recalc from rounds if possible, but for now assuming we update teams or using logic)
-          // *Note*: In this simplified version, we'll assume `activeRankingData` logic needs to be applied to ALL seasons. 
-          // Since that's heavy, we will approximate using the `teams` array in season if we were updating it.
-          // However, we are NOT updating `teams` array in DB with match results in this code (only `rounds`).
-          // So we must re-calc stats from rounds for history.
-          
           const sTeamStats = new Map<string, any>();
           s.teams.forEach(t => sTeamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0 }));
           
@@ -162,23 +166,44 @@ export default function FootballLeagueApp() {
                   if(ht) { if(h>a) {ht.win++; ht.points+=3;} else if(h<a) ht.loss++; else {ht.draw++; ht.points++;} }
                   if(at && m.away!=='BYE (부전승)') { if(a>h) {at.win++; at.points+=3;} else if(a<h) at.loss++; else {at.draw++; at.points++;} }
               }
+              // History Player
+              if(m.status === 'FINISHED') {
+                  [...m.homeScorers, ...m.awayScorers].forEach(p => {
+                      const k = p.name; 
+                      if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeScorers.includes(p)?m.home:m.away, owner: m.homeScorers.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0});
+                      playerHist.get(k).goals += p.count;
+                  });
+                  [...m.homeAssists, ...m.awayAssists].forEach(p => {
+                      const k = p.name;
+                      if(!playerHist.has(k)) playerHist.set(k, {name:p.name, team: m.homeAssists.includes(p)?m.home:m.away, owner: m.homeAssists.includes(p)?m.homeOwner:m.awayOwner, goals:0, assists:0});
+                      playerHist.get(k).assists += p.count;
+                  });
+              }
           }));
 
           const sortedSeasonTeams = Array.from(sTeamStats.values()).sort((a,b)=>b.points-a.points);
           
+          // History Teams & Owners
           sortedSeasonTeams.forEach((t, idx) => {
-              if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, titles:0, seasons:0});
+              // Owner
+              if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, titles:0});
               const o = ownerHist.get(t.ownerName);
-              o.win += t.win; o.draw += t.draw; o.loss += t.loss; o.points += t.points; o.seasons++;
-              // Prize approximation
+              o.win += t.win; o.draw += t.draw; o.loss += t.loss; o.points += t.points;
               if(idx===0) { o.titles++; o.prize+=s.prizes.first; }
               else if(idx===1) o.prize+=s.prizes.second;
               else if(idx===2) o.prize+=s.prizes.third;
+
+              // Team
+              if(!teamHist.has(t.name)) teamHist.set(t.name, {name:t.name, logo:t.logo, owner:t.ownerName, win:0, draw:0, loss:0, points:0});
+              const tm = teamHist.get(t.name);
+              tm.win+=t.win; tm.draw+=t.draw; tm.loss+=t.loss; tm.points+=t.points;
           });
       });
 
       return {
-          owners: Array.from(ownerHist.values()).sort((a,b) => b.points - a.points || b.titles - a.titles)
+          owners: Array.from(ownerHist.values()).sort((a,b) => b.points - a.points || b.prize - a.prize),
+          teams: Array.from(teamHist.values()).sort((a,b) => b.points - a.points),
+          players: Array.from(playerHist.values()).sort((a,b) => b.goals - a.goals || b.assists - a.assists)
       };
   }, [seasons]);
 
@@ -291,7 +316,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_02_10_UI_History</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_02_11_CompactUI_History</p>
         </div>
       </div>
       
@@ -303,7 +328,7 @@ export default function FootballLeagueApp() {
 
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
         
-        {/* VIEW: RANKING */}
+        {/* RANKING VIEW */}
         {currentView === 'RANKING' && (
            <div className="space-y-6 animate-in fade-in">
               <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
@@ -315,6 +340,7 @@ export default function FootballLeagueApp() {
                 </div>
               </div>
 
+              {/* 1. STANDINGS */}
               {rankingTab === 'STANDINGS' && (
                 <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                   <table className="w-full text-left text-xs uppercase border-collapse">
@@ -335,118 +361,135 @@ export default function FootballLeagueApp() {
                 </div>
               )}
 
-              {/* 🔥 [Updated] Owner Ranking with W/D/L */}
+              {/* 2. OWNERS RANKING (Table Layout) */}
               {rankingTab === 'OWNERS' && (
-                  <div className="grid gap-3">
-                      {activeRankingData.owners.map((o, i) => (
-                          <div key={i} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
-                              <div className="flex items-center gap-3">
-                                  <span className={`text-lg font-black italic w-6 ${i===0?'text-yellow-400':i===1?'text-slate-300':'text-slate-600'}`}>{i+1}</span>
-                                  <div>
-                                      <p className="font-bold text-sm">{o.name}</p>
-                                      <p className="text-[10px] text-slate-500">{o.win}W {o.draw}D {o.loss}L ({o.teamsCount} teams)</p>
-                                  </div>
-                              </div>
-                              <div className="text-right"><p className="text-xl font-bold text-emerald-400">{o.points} <span className="text-xs text-slate-500">pts</span></p><p className="text-[10px] text-yellow-500">₩ {o.prize.toLocaleString()}</p></div>
-                          </div>
-                      ))}
+                  <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+                      <table className="w-full text-left text-xs uppercase border-collapse">
+                          <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                              <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-center">Pts</th><th className="p-4 text-right">Prize</th></tr>
+                          </thead>
+                          <tbody>
+                              {activeRankingData.owners.map((o, i) => (
+                                  <tr key={i} className="border-b border-slate-800/50">
+                                      <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
+                                      <td className="p-4 font-bold text-white">{o.name} <span className="text-[9px] text-slate-500 block">Teams: {o.teamsCount}</span></td>
+                                      <td className="p-4 text-center text-slate-400">{o.win}W {o.draw}D {o.loss}L</td>
+                                      <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
+                                      <td className="p-4 text-right text-yellow-500 font-bold">₩ {o.prize.toLocaleString()}</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
                   </div>
               )}
 
+              {/* 3. PLAYERS (Table Layout) */}
               {rankingTab === 'PLAYERS' && (
-                  <div className="grid md:grid-cols-2 gap-6">
-                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                          <h4 className="text-yellow-400 font-bold mb-4 flex items-center gap-2">⚽ TOP SCORERS</h4>
-                          {activeRankingData.players.filter(p=>p.goals>0).slice(0,10).map((p,i)=>(
-                              <div key={i} className="flex justify-between py-2 border-b border-slate-800/50 text-xs"><span className="w-6 text-slate-500">{i+1}</span><span className="flex-1">{p.name} <span className="text-slate-600">({p.team})</span></span><span className="font-bold text-yellow-400">{p.goals}</span></div>
-                          ))}
+                  <div className="space-y-6">
+                      <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+                          <div className="bg-slate-950 p-3 border-b border-slate-800 text-yellow-400 font-bold text-sm">⚽ TOP SCORERS</div>
+                          <table className="w-full text-left text-xs uppercase">
+                              <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">Goals</th></tr></thead>
+                              <tbody>
+                                  {activeRankingData.players.filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,15).map((p,i)=>(
+                                      <tr key={i} className="border-b border-slate-800/50"><td className="p-3 text-center text-slate-600">{i+1}</td><td className="p-3 font-bold">{p.name}</td><td className="p-3 text-slate-500">{p.team} <span className="text-[9px]">({p.owner})</span></td><td className="p-3 text-right text-yellow-400 font-bold">{p.goals}</td></tr>
+                                  ))}
+                              </tbody>
+                          </table>
                       </div>
-                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                          <h4 className="text-blue-400 font-bold mb-4 flex items-center gap-2">🅰️ TOP ASSISTS</h4>
-                          {activeRankingData.players.sort((a,b)=>b.assists-a.assists).filter(p=>p.assists>0).slice(0,10).map((p,i)=>(
-                              <div key={i} className="flex justify-between py-2 border-b border-slate-800/50 text-xs"><span className="w-6 text-slate-500">{i+1}</span><span className="flex-1">{p.name} <span className="text-slate-600">({p.team})</span></span><span className="font-bold text-blue-400">{p.assists}</span></div>
-                          ))}
+                      <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+                          <div className="bg-slate-950 p-3 border-b border-slate-800 text-blue-400 font-bold text-sm">🅰️ TOP ASSISTS</div>
+                          <table className="w-full text-left text-xs uppercase">
+                              <thead className="bg-slate-900 text-slate-500"><tr><th className="p-3 w-8">#</th><th className="p-3">Player</th><th className="p-3">Team</th><th className="p-3 text-right">Assists</th></tr></thead>
+                              <tbody>
+                                  {activeRankingData.players.filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,15).map((p,i)=>(
+                                      <tr key={i} className="border-b border-slate-800/50"><td className="p-3 text-center text-slate-600">{i+1}</td><td className="p-3 font-bold">{p.name}</td><td className="p-3 text-slate-500">{p.team} <span className="text-[9px]">({p.owner})</span></td><td className="p-3 text-right text-blue-400 font-bold">{p.assists}</td></tr>
+                                  ))}
+                              </tbody>
+                          </table>
                       </div>
                   </div>
               )}
 
+              {/* 4. HIGHLIGHTS (Thumbnail Card UI) */}
               {rankingTab === 'HIGHLIGHTS' && (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {activeRankingData.highlights.map(m => (
-                          <div key={m.id} className="bg-black rounded-xl overflow-hidden border border-slate-800 group">
-                              <iframe className="w-full aspect-video" src={`https://www.youtube.com/embed/${m.youtubeUrl.split('/').pop()}?controls=0`} title="Highlight" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
-                              <div className="p-2 text-center"><p className="text-[10px] font-bold text-slate-300">{m.home} vs {m.away}</p><p className="text-[9px] text-slate-500">{m.stage || 'Group Stage'}</p></div>
+                      {activeRankingData.highlights.map((m, idx) => (
+                          <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
+                              <div className="relative aspect-video">
+                                  <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                  <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
+                              </div>
+                              <div className="p-3 flex items-center gap-3">
+                                  <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" />
+                                  <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
+                                      <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
+                                  </div>
+                              </div>
                           </div>
                       ))}
-                      {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트 영상이 없습니다.</div>}
+                      {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
                   </div>
               )}
            </div>
         )}
 
-        {/* 🔥 [VIEW 2] SCHEDULE (Improved Design & Exposed Info) */}
+        {/* 🔥 [VIEW 2] SCHEDULE (Compact Scoreboard) */}
         {currentView === 'SCHEDULE' && (
-            <div className="space-y-8 animate-in fade-in">
+            <div className="space-y-6 animate-in fade-in">
                 <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800">
                     <select value={viewSeasonId} onChange={(e) => setViewSeasonId(Number(e.target.value))} className="w-full bg-slate-950 text-white text-sm p-3 rounded-xl border border-slate-700">{seasons.map(s => <option key={s.id} value={s.id}>🗓️ {s.name}</option>)}</select>
                 </div>
                 
                 {seasons.find(s=>s.id===viewSeasonId)?.rounds?.map((r, rIdx) => (
-                    <div key={rIdx} className="space-y-4">
-                        <h3 className="text-lg font-black text-slate-200 pl-4 border-l-4 border-emerald-500 italic">{r.name}</h3>
-                        <div className="grid md:grid-cols-1 gap-6">
+                    <div key={rIdx} className="space-y-2">
+                        <h3 className="text-xs font-bold text-slate-500 pl-2 border-l-2 border-emerald-500">{r.name}</h3>
+                        <div className="grid md:grid-cols-1 gap-2">
                             {r.matches.map(m => (
-                                <div key={m.id} onClick={() => handleMatchClick(m)} className={`relative bg-slate-950 p-6 rounded-3xl border ${m.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-2xl group transition-all`}>
-                                    {/* Header */}
-                                    <div className="flex justify-between items-center mb-6">
-                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-900 px-3 py-1 rounded-full">{m.matchLabel || 'Match'}</span>
-                                        {m.youtubeUrl && <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 animate-pulse">▶ REPLAY</span>}
+                                <div key={m.id} onClick={() => handleMatchClick(m)} className={`relative bg-slate-950 p-3 rounded-xl border ${m.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}>
+                                    {/* Header (Compact) */}
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded">{m.matchLabel || 'Match'}</span>
+                                        {m.youtubeUrl && <span className="text-red-500 text-[9px] font-bold flex items-center gap-1">▶ Highlights</span>}
                                     </div>
                                     
-                                    {/* Scoreboard Main */}
-                                    <div className="flex justify-between items-center mb-6">
+                                    {/* Scoreboard (Compact) */}
+                                    <div className="flex justify-between items-center">
                                         {/* Home */}
-                                        <div className="flex flex-col items-center w-1/3 gap-3">
-                                            <img src={m.homeLogo} className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white object-contain p-1 shadow-lg" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                            <div className="text-center">
-                                                <p className="text-lg md:text-2xl font-black text-white leading-tight">{m.home}</p>
-                                                <p className="text-xs text-slate-500 font-bold mt-1">{m.homeOwner}</p>
-                                            </div>
+                                        <div className="flex flex-col items-center w-1/3 gap-1">
+                                            <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                            <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
                                         </div>
                                         {/* Score */}
                                         <div className="flex flex-col items-center">
                                             {m.status === 'FINISHED' ? (
-                                                <div className="flex items-center gap-4 text-5xl md:text-6xl font-black italic text-white tracking-tighter">
+                                                <div className="flex items-center gap-2 text-3xl font-black italic text-white tracking-tighter">
                                                     <span className={Number(m.homeScore)>Number(m.awayScore)?'text-emerald-400':''}>{m.homeScore}</span>
-                                                    <span className="text-slate-700 text-3xl">:</span>
+                                                    <span className="text-slate-700 text-xl">:</span>
                                                     <span className={Number(m.awayScore)>Number(m.homeScore)?'text-emerald-400':''}>{m.awayScore}</span>
                                                 </div>
                                             ) : (
-                                                <div className="bg-slate-800 px-6 py-2 rounded-xl text-xl font-bold text-slate-500 tracking-widest">VS</div>
+                                                <div className="bg-slate-900 px-3 py-1 rounded text-xs font-bold text-slate-500">VS</div>
                                             )}
                                         </div>
                                         {/* Away */}
-                                        <div className="flex flex-col items-center w-1/3 gap-3">
-                                            <img src={m.awayLogo} className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white object-contain p-1 shadow-lg" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
-                                            <div className="text-center">
-                                                <p className="text-lg md:text-2xl font-black text-white leading-tight">{m.away}</p>
-                                                <p className="text-xs text-slate-500 font-bold mt-1">{m.awayOwner}</p>
-                                            </div>
+                                        <div className="flex flex-col items-center w-1/3 gap-1">
+                                            <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                            <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
                                         </div>
                                     </div>
 
-                                    {/* 🔥 [New] Exposed Info (Scorers & Assists) */}
+                                    {/* Stats (Compact & Under Team) */}
                                     {m.status === 'FINISHED' && (
-                                        <div className="border-t border-slate-800 pt-4 grid grid-cols-2 gap-4 text-[10px] md:text-xs">
-                                            {/* Home Stats */}
-                                            <div className="text-right space-y-1">
-                                                {m.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
-                                                {m.homeAssists.map((s, idx)=><div key={`ha-${idx}`} className="text-slate-500">🅰️ {s.name} {s.count>1 && `(${s.count})`}</div>)}
+                                        <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[9px]">
+                                            <div className="text-center space-y-0.5">
+                                                {m.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name}</div>)}
+                                                {m.homeAssists.map((s, idx)=><div key={`ha-${idx}`} className="text-slate-500">🅰️ {s.name}</div>)}
                                             </div>
-                                            {/* Away Stats */}
-                                            <div className="text-left space-y-1">
-                                                {m.awayScorers.map((s, idx)=><div key={`ag-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
-                                                {m.awayAssists.map((s, idx)=><div key={`aa-${idx}`} className="text-slate-500">🅰️ {s.name} {s.count>1 && `(${s.count})`}</div>)}
+                                            <div className="text-center space-y-0.5">
+                                                {m.awayScorers.map((s, idx)=><div key={`ag-${idx}`} className="text-slate-300">⚽ {s.name}</div>)}
+                                                {m.awayAssists.map((s, idx)=><div key={`aa-${idx}`} className="text-slate-500">🅰️ {s.name}</div>)}
                                             </div>
                                         </div>
                                     )}
@@ -458,33 +501,75 @@ export default function FootballLeagueApp() {
             </div>
         )}
 
-        {/* 🔥 [VIEW 3] HISTORY (All Time Stats) */}
+        {/* 🔥 [VIEW 3] HISTORY (All Areas) */}
         {currentView === 'HISTORY' && (
             <div className="space-y-6 animate-in fade-in">
-                <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800 text-center">
-                    <h2 className="text-2xl font-black italic text-white mb-2">🏆 HALL OF FAME</h2>
-                    <p className="text-xs text-slate-500">역대 모든 시즌의 통합 기록입니다.</p>
+                <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex justify-center gap-2">
+                    {['TEAMS', 'OWNERS', 'PLAYERS'].map(t => (
+                        <button key={t} onClick={() => setHistoryTab(t as any)} className={`px-4 py-2 rounded-lg text-xs font-bold ${historyTab === t ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{t}</button>
+                    ))}
                 </div>
-                {/* 1. Owners All-Time */}
-                <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
-                    <div className="bg-slate-950 p-4 border-b border-slate-800 font-bold text-slate-400 text-sm">👑 역대 구단주 랭킹</div>
-                    <table className="w-full text-left text-xs uppercase">
-                        <thead className="bg-slate-900 text-slate-500 font-bold border-b border-slate-800">
-                            <tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Titles</th><th className="p-4 text-center">Pts</th><th className="p-4 text-right">Prize</th></tr>
-                        </thead>
-                        <tbody>
-                            {historyData.owners.map((o, i) => (
-                                <tr key={i} className="border-b border-slate-800/50">
-                                    <td className="p-4 text-center font-bold text-slate-600">{i+1}</td>
-                                    <td className="p-4 font-bold text-white">{o.name} <span className="text-[9px] text-slate-500 block">{o.win}W {o.draw}D {o.loss}L</span></td>
-                                    <td className="p-4 text-center text-yellow-400 font-bold">{o.titles > 0 ? `🏆 ${o.titles}` : '-'}</td>
-                                    <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
-                                    <td className="p-4 text-right text-slate-300">₩ {o.prize.toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+
+                {/* 1. Teams History */}
+                {historyTab === 'TEAMS' && (
+                    <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+                        <div className="bg-slate-950 p-4 border-b border-slate-800 font-bold text-slate-400 text-sm">🛡️ 역대 팀 성과</div>
+                        <table className="w-full text-left text-xs uppercase">
+                            <thead className="bg-slate-900 text-slate-500"><tr><th className="p-4 w-8">#</th><th className="p-4">Team</th><th className="p-4 text-center">W/D/L</th><th className="p-4 text-right">Pts</th></tr></thead>
+                            <tbody>
+                                {historyData.teams.slice(0, 20).map((t, i) => (
+                                    <tr key={i} className="border-b border-slate-800/50">
+                                        <td className="p-4 text-center text-slate-600">{i+1}</td>
+                                        <td className="p-4 font-bold text-white flex items-center gap-2"><img src={t.logo} className="w-6 h-6 object-contain"/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span></td>
+                                        <td className="p-4 text-center text-slate-400">{t.win}W {t.draw}D {t.loss}L</td>
+                                        <td className="p-4 text-right text-emerald-400 font-bold">{t.points}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* 2. Owners History */}
+                {historyTab === 'OWNERS' && (
+                    <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+                        <div className="bg-slate-950 p-4 border-b border-slate-800 font-bold text-slate-400 text-sm">👑 역대 구단주 랭킹</div>
+                        <table className="w-full text-left text-xs uppercase">
+                            <thead className="bg-slate-900 text-slate-500"><tr><th className="p-4 w-8">#</th><th className="p-4">Owner</th><th className="p-4 text-center">Titles</th><th className="p-4 text-center">Total Pts</th><th className="p-4 text-right">Total Prize</th></tr></thead>
+                            <tbody>
+                                {historyData.owners.map((o, i) => (
+                                    <tr key={i} className="border-b border-slate-800/50">
+                                        <td className={`p-4 text-center font-bold ${i<3?'text-yellow-400':'text-slate-600'}`}>{i+1}</td>
+                                        <td className="p-4 font-bold text-white">{o.name} <span className="text-[9px] text-slate-500 block">{o.win}W {o.draw}D {o.loss}L</span></td>
+                                        <td className="p-4 text-center text-yellow-400 font-bold">{o.titles > 0 ? `🏆 ${o.titles}` : '-'}</td>
+                                        <td className="p-4 text-center text-emerald-400 font-bold">{o.points}</td>
+                                        <td className="p-4 text-right text-slate-300">₩ {o.prize.toLocaleString()}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* 3. Players History */}
+                {historyTab === 'PLAYERS' && (
+                    <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+                        <div className="bg-slate-950 p-4 border-b border-slate-800 font-bold text-slate-400 text-sm">👟 역대 선수 랭킹</div>
+                        <table className="w-full text-left text-xs uppercase">
+                            <thead className="bg-slate-900 text-slate-500"><tr><th className="p-4 w-8">#</th><th className="p-4">Player</th><th className="p-4 text-right">Goals</th><th className="p-4 text-right">Assists</th></tr></thead>
+                            <tbody>
+                                {historyData.players.slice(0, 20).map((p, i) => (
+                                    <tr key={i} className="border-b border-slate-800/50">
+                                        <td className="p-4 text-center text-slate-600">{i+1}</td>
+                                        <td className="p-4 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 block">{p.team} ({p.owner})</span></td>
+                                        <td className="p-4 text-right text-yellow-400 font-bold">{p.goals}</td>
+                                        <td className="p-4 text-right text-blue-400 font-bold">{p.assists}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         )}
 
@@ -559,7 +644,6 @@ export default function FootballLeagueApp() {
         )}
       </main>
 
-      {/* 🔥 [Updated] Improved Score Input Modal */}
       {editingMatch && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4">
            <div className="bg-slate-900 p-6 rounded-3xl border border-slate-700 w-full max-w-5xl relative max-h-[90vh] overflow-y-auto">
@@ -571,19 +655,14 @@ export default function FootballLeagueApp() {
               </div>
 
               <div className="grid md:grid-cols-3 gap-8">
-                  {/* Home Input */}
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                      <div className="flex flex-col items-center mb-4">
-                          <img src={editingMatch.homeLogo} className="w-12 h-12 mb-2"/>
-                          <span className="font-bold text-white">{editingMatch.home}</span>
-                      </div>
+                      <div className="flex flex-col items-center mb-4"><img src={editingMatch.homeLogo} className="w-12 h-12 mb-2"/><span className="font-bold text-white">{editingMatch.home}</span></div>
                       <div className="space-y-4">
                           <RecordInput type="homeScorer" inputValue={recordInputs.homeScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeScorers} label="⚽ Scorers" colorClass="text-emerald-400" />
                           <RecordInput type="homeAssist" inputValue={recordInputs.homeAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeAssists} label="🅰️ Assists" colorClass="text-blue-400" />
                       </div>
                   </div>
 
-                  {/* Center Control */}
                   <div className="flex flex-col items-center justify-center space-y-6">
                       <div className="flex items-center gap-4">
                           <input type="number" value={matchInputs.homeScore} onChange={e=>setMatchInputs({...matchInputs, homeScore:e.target.value})} className="w-20 h-20 text-center text-4xl font-black bg-black rounded-2xl border border-slate-700 text-white focus:border-emerald-500 outline-none" />
@@ -597,12 +676,8 @@ export default function FootballLeagueApp() {
                       <button onClick={saveMatchResult} className="bg-emerald-600 w-full py-4 rounded-xl font-black text-lg hover:bg-emerald-500 shadow-lg shadow-emerald-900/20">SAVE RESULT</button>
                   </div>
 
-                  {/* Away Input */}
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                      <div className="flex flex-col items-center mb-4">
-                          <img src={editingMatch.awayLogo} className="w-12 h-12 mb-2"/>
-                          <span className="font-bold text-white">{editingMatch.away}</span>
-                      </div>
+                      <div className="flex flex-col items-center mb-4"><img src={editingMatch.awayLogo} className="w-12 h-12 mb-2"/><span className="font-bold text-white">{editingMatch.away}</span></div>
                       <div className="space-y-4">
                           <RecordInput type="awayScorer" inputValue={recordInputs.awayScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayScorers} label="⚽ Scorers" colorClass="text-emerald-400" />
                           <RecordInput type="awayAssist" inputValue={recordInputs.awayAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayAssists} label="🅰️ Assists" colorClass="text-blue-400" />
