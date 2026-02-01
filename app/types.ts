@@ -5,7 +5,6 @@ import React from 'react';
 export interface Season { 
   id: number; name: string; type: 'LEAGUE' | 'TOURNAMENT'; leagueMode?: 'SINGLE' | 'DOUBLE'; isActive: boolean;
   teams?: Team[]; rounds?: Round[]; 
-  // 🔥 [Update] assist 상금 추가
   prizes: { total: number; first: number; second: number; third: number; scorer: number; assist: number; };
 }
 export interface Owner { id: number; nickname: string; photo: string; docId?: string; }
@@ -56,12 +55,24 @@ export const getSortedLeagues = (leagueNames: string[]) => {
   return leagueNames.sort((a, b) => (LEAGUE_RANK[a] || 50) - (LEAGUE_RANK[b] || 50));
 };
 
-export const getTierColor = (tier: string) => {
+// 기존 함수 (보더용)
+export const getTierColor = (tier: string = 'C') => {
   switch(tier) {
     case 'S': return 'bg-purple-600 text-white border-purple-400';
     case 'A': return 'bg-red-600 text-white border-red-400';
     case 'B': return 'bg-blue-600 text-white border-blue-400';
     case 'C': return 'bg-slate-600 text-slate-300 border-slate-500';
+    default: return 'bg-slate-800 text-slate-500';
+  }
+};
+
+// 🔥 [New] 배지용 배경색 함수 (안전장치 포함)
+export const getTierBadgeColor = (tier: string = 'C') => {
+  switch(tier) {
+    case 'S': return 'bg-purple-600 text-white';
+    case 'A': return 'bg-red-600 text-white';
+    case 'B': return 'bg-blue-600 text-white';
+    case 'C': return 'bg-slate-600 text-slate-300';
     default: return 'bg-slate-800 text-slate-500';
   }
 };
