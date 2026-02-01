@@ -5,8 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase'; 
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, setDoc } from 'firebase/firestore';
-// 🔥 getTierBadgeColor 추가 임포트 확인
-import { Season, Owner, League, MasterTeam, Team, Match, Round, Banner, MatchRecord, DEFAULT_LEAGUES, FALLBACK_IMG, getBannerContent, getSortedTeamsLogic, getTournamentStageName, getSortedLeagues, getTierColor, getTierBadgeColor } from './types';
+import { Season, Owner, League, MasterTeam, Team, Match, Round, Banner, MatchRecord, DEFAULT_LEAGUES, FALLBACK_IMG, getBannerContent, getSortedTeamsLogic, getTournamentStageName, getSortedLeagues, getTierBadgeColor } from './types';
 import { RecordInput } from './components/RecordInput';
 import { AdminLeagueManager, AdminTeamManager } from './components/AdminTeamManagement'; 
 import { AdminBannerManager } from './components/AdminBannerManager'; 
@@ -47,7 +46,7 @@ export default function FootballLeagueApp() {
   const [bannerTitle, setBannerTitle] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
 
-  // 🔥 [Assignments] New UX States
+  // 🔥 [Assignment] Filters
   const [selOwnerId, setSelOwnerId] = useState<number | ''>('');
   const [assignCategory, setAssignCategory] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL'); 
   const [assignRegion, setAssignRegion] = useState<string>('ALL'); 
@@ -65,11 +64,7 @@ export default function FootballLeagueApp() {
 
   useEffect(() => {
     if (banners.length === 0) return;
-    const currentBanner = banners[bannerIdx];
-    if(!currentBanner) return;
-    const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
-    const delay = isVideo ? 15000 : 5000;
-    const t = setTimeout(() => setBannerIdx((prev) => (prev + 1) % banners.length), delay);
+    const t = setTimeout(() => setBannerIdx((prev) => (prev + 1) % banners.length), 5000);
     return () => clearTimeout(t);
   }, [bannerIdx, banners]);
 
@@ -102,7 +97,6 @@ export default function FootballLeagueApp() {
     if(!targetSeason?.teams) return { teams: [], owners: [], players: [], highlights: [] };
     const teamStats = new Map<string, Team>();
     targetSeason.teams.forEach(t => teamStats.set(t.name, { ...t, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0 }));
-    const pMap = new Map<string, any>();
     
     targetSeason.rounds?.forEach(r => r.matches.forEach(m => {
       if(m.status === 'FINISHED' || m.status === 'BYE') {
@@ -111,14 +105,10 @@ export default function FootballLeagueApp() {
         if(ht) { ht.gf+=h; ht.ga+=a; ht.gd+=(h-a); if(h>a) { ht.win++; ht.points+=3; } else if(h<a) { ht.loss++; } else { ht.draw++; ht.points++; } }
         if(at && m.away !== 'BYE (부전승)') { at.gf+=a; at.ga+=h; at.gd+=(a-h); if(a>h) { at.win++; at.points+=3; } else if(a<h) { at.loss++; } else { at.draw++; at.points++; } }
       }
-      if(m.status === 'FINISHED') {
-        [...m.homeScorers, ...m.awayScorers].forEach(s => { const k=`${s.name}-${m.homeOwner}`; if(!pMap.has(k)) pMap.set(k, {name:s.name, team:m.home, owner:m.homeOwner, goals:0, assists:0}); pMap.get(k).goals+=s.count; });
-        [...m.homeAssists, ...m.awayAssists].forEach(s => { const k=`${s.name}-${m.homeOwner}`; if(!pMap.has(k)) pMap.set(k, {name:s.name, team:m.home, owner:m.homeOwner, goals:0, assists:0}); pMap.get(k).assists+=s.count; });
-      }
     }));
 
     const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd).map((t, i) => ({ ...t, rank: i+1, currentPrize: i===0?targetSeason.prizes.first:i===1?targetSeason.prizes.second:i===2?targetSeason.prizes.third:0 }));
-    return { teams, owners: [], players: Array.from(pMap.values()), highlights: targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl) || [] };
+    return { teams, owners: [], players: [], highlights: targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl) || [] };
   }, [seasons, viewSeasonId]);
 
   // 🔥 [Assignment Logic] Filter Available Teams (Exclude already assigned)
@@ -126,10 +116,8 @@ export default function FootballLeagueApp() {
     const currentSeason = seasons.find(s => s.id === adminTab);
     const assignedTeamNames = (currentSeason?.teams || []).map(t => t.name);
 
-    // 1. 중복 제외
     let filtered = masterTeams.filter(t => !assignedTeamNames.includes(t.name)); 
     
-    // 2. 필터 적용
     if (assignCategory !== 'ALL') filtered = filtered.filter(t => t.category === assignCategory);
     if (assignRegion !== 'ALL') filtered = filtered.filter(t => t.region === assignRegion);
     if (assignTier !== 'ALL') filtered = filtered.filter(t => t.tier === assignTier);
@@ -138,10 +126,23 @@ export default function FootballLeagueApp() {
     return getSortedTeamsLogic(filtered, '');
   }, [masterTeams, seasons, adminTab, assignCategory, assignRegion, assignTier, assignSearch]);
 
-  // 🔥 [Assignment Logic] Available Regions
-  const assignmentRegions = useMemo(() => {
-    return getSortedLeagues(Array.from(new Set(masterTeams.filter(t => assignCategory === 'ALL' || t.category === assignCategory).map(t => t.region))));
-  }, [masterTeams, assignCategory]);
+  // 🔥 [Assignment Logic] Group Leagues for Display & Dropdown
+  const { clubLeagues, nationalLeagues } = useMemo(() => {
+    // 1. 현재 필터(카테고리)에 따라 유효한 지역 추출
+    const regions = Array.from(new Set(masterTeams.filter(t => assignCategory === 'ALL' || t.category === assignCategory).map(t => t.region)));
+    
+    // 2. 카테고리별로 분리
+    const cList = regions.filter(r => {
+        const l = leagues.find(lg => lg.name === r);
+        return l ? l.category === 'CLUB' : r !== 'Europe' && r !== 'South America' && r !== 'Asia/Oceania' && r !== 'Africa' && r !== 'North America'; 
+    });
+    const nList = regions.filter(r => !cList.includes(r));
+
+    return { 
+        clubLeagues: getSortedLeagues(cList), 
+        nationalLeagues: getSortedLeagues(nList) 
+    };
+  }, [masterTeams, assignCategory, leagues]);
 
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
@@ -163,7 +164,6 @@ export default function FootballLeagueApp() {
   const handleSaveBanner = async () => { if(bannerTitle && bannerUrl) { await addDoc(collection(db,"banners"),{title:bannerTitle,url:bannerUrl,order:Date.now()}); setBannerTitle(''); setBannerUrl(''); }};
   const handleDeleteBanner = async (id:string) => { if(confirm("배너 삭제?")) await deleteDoc(doc(db,"banners",id)); };
   
-  // 🔥 [Assignment] Click to Assign
   const handleQuickAssign = async (team: MasterTeam) => {
       if(!selOwnerId) return alert("먼저 팀을 배정받을 오너를 선택해주세요! 👆");
       
@@ -176,7 +176,6 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [Assignment] Random within Filter
   const handleRandomFromFilter = async () => {
       if(!selOwnerId) return alert("오너를 먼저 선택해주세요.");
       if(availableTeams.length === 0) return alert("현재 필터 조건에 맞는 팀이 없습니다.");
@@ -324,7 +323,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_108_HotFix</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_01_05_TeamFilter_UX</p>
         </div>
       </div>
       
@@ -368,6 +367,7 @@ export default function FootballLeagueApp() {
         )}
         {currentView === 'ADMIN' && (
            <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
+             <h3 className="text-sm font-bold text-slate-400 mb-2">🎯 게임 선택</h3>
              <select value={adminTab} onChange={(e) => setAdminTab(e.target.value === 'NEW' || e.target.value === 'OWNER' || e.target.value === 'BANNER' || e.target.value === 'LEAGUES' || e.target.value === 'TEAMS' ? e.target.value : Number(e.target.value))} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm mb-4">
                 <option value="NEW">➕ New Season</option>
                 <option value="LEAGUES">🏳️ League Management</option>
@@ -409,11 +409,12 @@ export default function FootballLeagueApp() {
                  </div>
              )}
              
-             {/* 🔥 [Assignment] Grid UI (Fixed) */}
+             {/* 🔥 [Assignments] New Lazy Load & Grouped UX */}
              {typeof adminTab === 'number' && (
                 <div className="space-y-6">
                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 sticky top-0 z-20 shadow-xl">
-                       <div className="flex gap-2 items-center mb-2">
+                       <h3 className="text-sm font-bold text-slate-400 mb-2">👤 오너 배정 설정</h3>
+                       <div className="flex gap-2 items-center mb-4">
                            <select value={selOwnerId} onChange={e=>setSelOwnerId(Number(e.target.value))} className={`flex-1 p-3 rounded-xl border font-bold text-sm ${selOwnerId ? 'bg-indigo-900 border-indigo-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>
                                <option value="">👤 배정할 오너 선택 (필수)</option>
                                {owners.map(o=><option key={o.id} value={o.id}>{o.nickname}</option>)}
@@ -421,33 +422,83 @@ export default function FootballLeagueApp() {
                            <button onClick={handleRandomFromFilter} className="bg-purple-600 px-4 py-3 rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-transform" title="현재 필터 내에서 랜덤 배정">🎲</button>
                        </div>
                        
-                       <div className="grid grid-cols-4 gap-1">
-                           <select value={assignCategory} onChange={e=>setAssignCategory(e.target.value as any)} className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px]"><option value="ALL">전체 타입</option><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select>
+                       {/* 1. 필터 섹션 (3열) */}
+                       <div className="grid grid-cols-3 gap-1 mb-1">
+                           <select value={assignCategory} onChange={e=>{setAssignCategory(e.target.value as any); setAssignRegion('ALL');}} className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px]"><option value="ALL">전체 타입</option><option value="CLUB">클럽</option><option value="NATIONAL">국가대표</option></select>
                            <select value={assignTier} onChange={e=>setAssignTier(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px]"><option value="ALL">전체 등급</option>{['S','A','B','C'].map(t=><option key={t} value={t}>{t}급</option>)}</select>
-                           <select value={assignRegion} onChange={e=>setAssignRegion(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px]"><option value="ALL">전체 리그</option>{assignmentRegions.map(r=><option key={r} value={r}>{r}</option>)}</select>
-                           <input value={assignSearch} onChange={e=>setAssignSearch(e.target.value)} placeholder="팀 검색..." className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px] w-full" />
+                           <select value={assignRegion} onChange={e=>setAssignRegion(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded text-[10px]">
+                               <option value="ALL">전체 리그/지역</option>
+                               <optgroup label="[ 클럽 리그 ]">{clubLeagues.map(r=><option key={r} value={r}>{r}</option>)}</optgroup>
+                               <optgroup label="[ 국가대표 지역 ]">{nationalLeagues.map(r=><option key={r} value={r}>{r}</option>)}</optgroup>
+                           </select>
                        </div>
+                       {/* 2. 검색 섹션 (1열) */}
+                       <input value={assignSearch} onChange={e=>setAssignSearch(e.target.value)} placeholder="팀 이름 검색..." className="bg-slate-900 border border-slate-700 p-3 rounded text-xs w-full" />
                    </div>
 
+                   {/* 3. 그리드 뷰 (리그/지역 우선 노출) */}
                    <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 min-h-[300px]">
                        <h4 className="text-xs font-bold text-slate-400 mb-3 flex justify-between">
-                           <span>👇 아래 팀을 클릭하여 배정하세요 ({availableTeams.length})</span>
-                           {selOwnerId && <span className="text-emerald-400">Target: {owners.find(o=>o.id===selOwnerId)?.nickname}</span>}
+                           <span>👇 {assignRegion === 'ALL' && !assignSearch ? '리그/지역을 선택하세요' : `팀을 클릭하여 배정 (${availableTeams.length})`}</span>
+                           {selOwnerId && <span className="text-emerald-400">To: {owners.find(o=>o.id===selOwnerId)?.nickname}</span>}
                        </h4>
                        
-                       <div className="grid grid-cols-4 md:grid-cols-6 gap-3">
-                           {availableTeams.map(t => (
-                               <div key={t.id} onClick={() => handleQuickAssign(t)} className="relative aspect-square bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-900/20 transition-all active:scale-95 group">
-                                   <img src={t.logo} className={`w-10 h-10 shadow-md ${t.category==='NATIONAL'?'rounded-full object-cover':'object-contain'}`} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
-                                   <div className="absolute bottom-1 w-full text-center px-1">
-                                       <p className="text-[9px] truncate text-slate-400 group-hover:text-white font-bold">{t.name}</p>
+                       {/* CASE A: 리그/지역 엠블럼 노출 (Lazy Load) */}
+                       {assignRegion === 'ALL' && !assignSearch ? (
+                           <div className="space-y-6">
+                               {/* 클럽 리그 섹션 */}
+                               {(assignCategory === 'ALL' || assignCategory === 'CLUB') && (
+                                   <div>
+                                       <p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">[ 클럽 리그 ]</p>
+                                       <div className="grid grid-cols-4 gap-3">
+                                           {clubLeagues.map((l, i) => {
+                                               const info = leagues.find(lg => lg.name === l);
+                                               return (
+                                                   <div key={i} onClick={() => setAssignRegion(l)} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-105 transition-transform">
+                                                       <img src={info?.logo || FALLBACK_IMG} className="w-12 h-12 rounded-full bg-white object-contain p-1.5 shadow-md" />
+                                                       <span className="text-[9px] text-slate-400 text-center leading-tight">{l}</span>
+                                                   </div>
+                                               );
+                                           })}
+                                       </div>
                                    </div>
-                                   {/* 🔥 [Fix] Safe Tier Badge Render */}
-                                   <span className={`absolute top-1 right-1 text-[8px] px-1 rounded ${getTierBadgeColor(t.tier || 'C')}`}>{t.tier || 'C'}</span>
+                               )}
+                               {/* 국가대표 지역 섹션 */}
+                               {(assignCategory === 'ALL' || assignCategory === 'NATIONAL') && (
+                                   <div>
+                                       <p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">[ 국가대표 지역 ]</p>
+                                       <div className="grid grid-cols-4 gap-3">
+                                           {nationalLeagues.map((l, i) => {
+                                               const info = leagues.find(lg => lg.name === l);
+                                               return (
+                                                   <div key={i} onClick={() => setAssignRegion(l)} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-105 transition-transform">
+                                                       <img src={info?.logo || FALLBACK_IMG} className="w-12 h-12 rounded-full bg-white object-cover shadow-md" />
+                                                       <span className="text-[9px] text-slate-400 text-center leading-tight">{l}</span>
+                                                   </div>
+                                               );
+                                           })}
+                                       </div>
+                                   </div>
+                               )}
+                           </div>
+                       ) : (
+                           /* CASE B: 팀 리스트 노출 (배정 모드) */
+                           <div>
+                               <div className="grid grid-cols-4 md:grid-cols-6 gap-3">
+                                   {availableTeams.map(t => (
+                                       <div key={t.id} onClick={() => handleQuickAssign(t)} className="relative aspect-square bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-900/20 transition-all active:scale-95 group">
+                                           <img src={t.logo} className={`w-10 h-10 shadow-md ${t.category==='NATIONAL'?'rounded-full object-cover':'object-contain'}`} onError={(e:any)=>e.target.src=FALLBACK_IMG} />
+                                           <div className="absolute bottom-1 w-full text-center px-1">
+                                               <p className="text-[9px] truncate text-slate-400 group-hover:text-white font-bold">{t.name}</p>
+                                           </div>
+                                           <span className={`absolute top-1 right-1 text-[8px] px-1 rounded ${getTierBadgeColor(t.tier || 'C')}`}>{t.tier || 'C'}</span>
+                                       </div>
+                                   ))}
                                </div>
-                           ))}
-                           {availableTeams.length === 0 && <div className="col-span-4 text-center text-slate-600 py-10">조건에 맞는 팀이 없습니다.</div>}
-                       </div>
+                               {/* 뒤로가기 버튼 */}
+                               <button onClick={() => {setAssignRegion('ALL'); setAssignSearch('');}} className="w-full mt-6 py-3 bg-slate-800 text-slate-400 text-xs rounded-xl hover:bg-slate-700">← 리그 목록으로 돌아가기</button>
+                           </div>
+                       )}
                    </div>
 
                    <div className="border-t border-slate-800 pt-4">
