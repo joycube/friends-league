@@ -8,7 +8,7 @@ import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, order
 import { Season, Owner, League, MasterTeam, Team, Match, Round, Banner, MatchRecord, DEFAULT_LEAGUES, FALLBACK_IMG, getBannerContent, getSortedTeamsLogic, getTierColor, getTournamentStageName } from './types';
 import { RecordInput } from './components/RecordInput';
 import { AdminLeagueManager, AdminTeamManager } from './components/AdminTeamManagement'; 
-import { AdminBannerManager } from './components/AdminBannerManager'; // 🔥 New Import
+import { AdminBannerManager } from './components/AdminBannerManager'; 
 
 export default function FootballLeagueApp() {
   const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'ADMIN' | 'TUTORIAL'>('RANKING');
@@ -62,7 +62,7 @@ export default function FootballLeagueApp() {
     return () => clearInterval(t);
   }, []);
 
-  // 🔥 Banner Rotation Logic (Video 15s, Image 5s)
+  // Banner Rotation Logic
   useEffect(() => {
     if (banners.length === 0) return;
     const currentBanner = banners[bannerIdx];
@@ -208,15 +208,12 @@ export default function FootballLeagueApp() {
         }
     }
     await updateDoc(doc(db, "seasons", String(adminTab)), { rounds });
-    alert(`스케줄 생성 완료! (${s.type})`);
-  };
+};
 
   const handleMatchClick = (m: Match) => { setEditingMatch({...m}); setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl}); };
   const saveMatchResult = async () => {
     if(!editingMatch) return;
     const s = seasons.find(se => se.id === editingMatch.seasonId);
-    if(s?.type === 'TOURNAMENT' && editingMatch.status !== 'BYE' && matchInputs.homeScore === matchInputs.awayScore) return alert("토너먼트는 무승부 불가");
-
     if(s && s.rounds) {
        let newRounds = [...s.rounds];
        newRounds = newRounds.map(r => ({ ...r, matches: r.matches.map(m => m.id === editingMatch.id ? { ...editingMatch, homeScore: matchInputs.homeScore, awayScore: matchInputs.awayScore, youtubeUrl: matchInputs.youtube, status: 'FINISHED' as const } : m) }));
@@ -264,7 +261,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_105_Banner_Complete</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_107_Team_UX</p>
         </div>
       </div>
       
@@ -310,8 +307,8 @@ export default function FootballLeagueApp() {
            <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
              <select value={adminTab} onChange={(e) => setAdminTab(e.target.value === 'NEW' || e.target.value === 'OWNER' || e.target.value === 'BANNER' || e.target.value === 'LEAGUES' || e.target.value === 'TEAMS' ? e.target.value : Number(e.target.value))} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm mb-4">
                 <option value="NEW">➕ New Season</option>
-                <option value="TEAMS">🛡️ Team Management</option>
                 <option value="LEAGUES">🏳️ League Management</option>
+                <option value="TEAMS">🛡️ Team Management</option>
                 <option value="OWNER">👤 Owner Management</option>
                 <option value="BANNER">🖼️ Banner Management</option>
                 <optgroup label="Seasons">{seasons.map(s => <option key={s.id} value={s.id}>🏆 {s.name}</option>)}</optgroup>
@@ -334,7 +331,7 @@ export default function FootballLeagueApp() {
                 </div>
              )}
 
-             {adminTab === 'OWNER' && <div className="flex gap-2"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="Owner Name" className="bg-slate-800 p-3 rounded w-full"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="Photo URL" className="bg-slate-800 p-3 rounded w-full"/><button onClick={handleSaveOwner} className="bg-purple-600 px-6 rounded font-bold">Save</button></div>}
+             {adminTab === 'OWNER' && <div className="flex gap-2"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="Owner Name" className="bg-slate-800 p-3 rounded w-full"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="Photo URL" className="bg-slate-950 p-3 rounded w-full"/><button onClick={handleSaveOwner} className="bg-purple-600 px-6 rounded font-bold">Save</button></div>}
              {adminTab === 'OWNER' && <div className="grid grid-cols-2 gap-2 mt-4">{owners.map(o => <div key={o.id} onClick={()=>handleEditOwnerClick(o)} className="p-2 bg-black rounded flex items-center gap-2 cursor-pointer"><img src={o.photo} className="w-8 h-8 rounded-full" /><span>{o.nickname}</span></div>)}</div>}
            </div>
         )}
