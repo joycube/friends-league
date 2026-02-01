@@ -5,7 +5,8 @@ import React from 'react';
 export interface Season { 
   id: number; name: string; type: 'LEAGUE' | 'TOURNAMENT'; leagueMode?: 'SINGLE' | 'DOUBLE'; isActive: boolean;
   teams?: Team[]; rounds?: Round[]; 
-  prizes: { total: number; first: number; second: number; third: number; scorer: number; };
+  // 🔥 [Update] assist 상금 추가
+  prizes: { total: number; first: number; second: number; third: number; scorer: number; assist: number; };
 }
 export interface Owner { id: number; nickname: string; photo: string; docId?: string; }
 export interface League { id?: string; name: string; logo: string; category: 'CLUB' | 'NATIONAL'; }
@@ -22,11 +23,10 @@ export interface Round { round: number; matches: Match[]; seasonId: number; name
 export interface Banner { id?: string; title: string; url: string; order: number; }
 
 // --- Constants ---
-// 🔥 인기도(우선순위) 정렬을 위한 랭크 정의
 export const LEAGUE_RANK: { [key: string]: number } = {
   "Premier League": 1, "La Liga": 2, "Bundesliga": 3, "Serie A": 4, "Ligue 1": 5, 
   "K League": 6, "J League": 7, "MLS": 8, "Saudi Pro League": 9,
-  "Europe": 1, "South America": 2, "Asia/Oceania": 3, "North America": 4, "Africa": 5, // 국가대표용
+  "Europe": 1, "South America": 2, "Asia/Oceania": 3, "North America": 4, "Africa": 5,
   "Others": 99, "무소속": 100
 };
 
@@ -52,7 +52,6 @@ export const getSortedTeamsLogic = (teams: MasterTeam[], search: string) => {
   return base.sort((a, b) => a.name.localeCompare(b.name));
 };
 
-// 🔥 리그 정렬 로직 추가
 export const getSortedLeagues = (leagueNames: string[]) => {
   return leagueNames.sort((a, b) => (LEAGUE_RANK[a] || 50) - (LEAGUE_RANK[b] || 50));
 };

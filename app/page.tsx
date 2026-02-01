@@ -2,10 +2,10 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase'; 
-import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, setDoc, writeBatch } from 'firebase/firestore';
-import { Season, Owner, League, MasterTeam, Team, Match, Round, Banner, MatchRecord, DEFAULT_LEAGUES, FALLBACK_IMG, getBannerContent, getSortedTeamsLogic, getTierColor, getTournamentStageName } from './types';
+import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, setDoc } from 'firebase/firestore';
+import { Season, Owner, League, MasterTeam, Team, Match, Round, Banner, MatchRecord, DEFAULT_LEAGUES, FALLBACK_IMG, getBannerContent, getSortedTeamsLogic, getTournamentStageName } from './types';
 import { RecordInput } from './components/RecordInput';
 import { AdminLeagueManager, AdminTeamManager } from './components/AdminTeamManagement'; 
 import { AdminBannerManager } from './components/AdminBannerManager'; 
@@ -17,10 +17,9 @@ export default function FootballLeagueApp() {
   const [adminTab, setAdminTab] = useState<number | 'NEW' | 'OWNER' | 'BANNER' | 'LEAGUES' | 'TEAMS'>('NEW');
   
   const [viewSeasonId, setViewSeasonId] = useState<number>(0); 
-  const [statView, setStatView] = useState<'GOAL' | 'ASSIST'>('GOAL');
   const [currentTime, setCurrentTime] = useState<string>('');
   
-  // Data States
+  // Data
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
@@ -28,41 +27,37 @@ export default function FootballLeagueApp() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [bannerIdx, setBannerIdx] = useState(0);
 
-  // Touch States
+  // Touch
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
-  // Input States (Season Creation)
+  // New Season Input
   const [inputSeasonName, setInputSeasonName] = useState('');
   const [inputSeasonType, setInputSeasonType] = useState<'LEAGUE' | 'TOURNAMENT'>('LEAGUE');
   const [inputLeagueMode, setInputLeagueMode] = useState<'SINGLE' | 'DOUBLE'>('SINGLE');
   const [inputTotalPrize, setInputTotalPrize] = useState(100000);
-  const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000 });
+  // 🔥 [Update] 어시스트 상금 추가
+  const [prizes, setPrizes] = useState({ first: 50000, second: 20000, third: 10000, scorer: 10000, assist: 10000 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
-  // Admin States
+  // Admin & Team Assignment
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
-
-  // Team Assignment States
+  const [bannerTitle, setBannerTitle] = useState('');
+  const [bannerUrl, setBannerUrl] = useState('');
   const [selOwnerId, setSelOwnerId] = useState<number | ''>('');
-  const [selCategory, setSelCategory] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL');
-  const [selTier, setSelTier] = useState<string>('ALL');
-  const [selRegion, setSelRegion] = useState<string>('ALL');
   const [selTeamName, setSelTeamName] = useState<string>('');
 
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [matchInputs, setMatchInputs] = useState({ homeScore:'', awayScore:'', youtube:'' });
   const [recordInputs, setRecordInputs] = useState({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
 
-  // --- Effects ---
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date().toLocaleString()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Banner Rotation Logic
   useEffect(() => {
     if (banners.length === 0) return;
     const currentBanner = banners[bannerIdx];
@@ -73,13 +68,15 @@ export default function FootballLeagueApp() {
     return () => clearTimeout(t);
   }, [bannerIdx, banners]);
 
+  // 🔥 [Update] 상금 자동 계산 로직 (50/20/10/10/10)
   useEffect(() => { 
     if (isAutoPrize) {
       setPrizes({ 
         first: Math.floor(inputTotalPrize * 0.5), 
-        second: Math.floor(inputTotalPrize * 0.3), 
+        second: Math.floor(inputTotalPrize * 0.2), 
         third: Math.floor(inputTotalPrize * 0.1), 
-        scorer: Math.floor(inputTotalPrize * 0.1) 
+        scorer: Math.floor(inputTotalPrize * 0.1),
+        assist: Math.floor(inputTotalPrize * 0.1) 
       }); 
     }
   }, [inputTotalPrize, isAutoPrize]);
@@ -88,8 +85,7 @@ export default function FootballLeagueApp() {
     const u1 = onSnapshot(query(collection(db, "users"), orderBy("id", "asc")), s => setOwners(s.docs.map(d => ({...d.data(), docId: d.id} as Owner))));
     const u2 = onSnapshot(collection(db, "master_teams"), s => setMasterTeams(s.docs.map(d => ({id:d.id, ...d.data()} as MasterTeam))));
     const u3 = onSnapshot(query(collection(db, "seasons"), orderBy("id", "desc")), s => { 
-        const d = s.docs.map(doc => doc.data() as Season); 
-        setSeasons(d); 
+        const d = s.docs.map(doc => doc.data() as Season); setSeasons(d); 
         if(d.length > 0 && viewSeasonId === 0) setViewSeasonId(d[0].id);
     });
     const u4 = onSnapshot(collection(db, "banners"), s => setBanners(s.docs.map(d => ({id:d.id, ...d.data()} as Banner))));
@@ -97,7 +93,6 @@ export default function FootballLeagueApp() {
     return () => { u1(); u2(); u3(); u4(); u5(); };
   }, []);
 
-  // --- Memos ---
   const activeRankingData = useMemo(() => {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
     if(!targetSeason?.teams) return { teams: [], owners: [], players: [], highlights: [] };
@@ -119,23 +114,16 @@ export default function FootballLeagueApp() {
     }));
 
     const teams = Array.from(teamStats.values()).sort((a,b) => b.points - a.points || b.gd - a.gd).map((t, i) => ({ ...t, rank: i+1, currentPrize: i===0?targetSeason.prizes.first:i===1?targetSeason.prizes.second:i===2?targetSeason.prizes.third:0 }));
-    const players = Array.from(pMap.values());
-    const ownerMap = new Map<string, any>();
-    teams.forEach(t => { 
-        if(!ownerMap.has(t.ownerName)) ownerMap.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0}); 
-        const o = ownerMap.get(t.ownerName); o.win+=t.win; o.draw+=t.draw; o.loss+=t.loss; o.points+=t.points; o.prize+=(t.currentPrize||0); 
-    });
-    return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players, highlights: targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl) || [] };
+    return { teams, owners: [], players: Array.from(pMap.values()), highlights: targetSeason.rounds?.flatMap(r => r.matches).filter(m => m.youtubeUrl) || [] };
   }, [seasons, viewSeasonId]);
 
   const { assignmentTeams } = useMemo(() => {
     const recordActiveS = seasons.find(s => s.id === adminTab);
     const activeTeamNames = (recordActiveS?.teams || []).map(at => at.name);
-    const available = masterTeams.filter(t => !activeTeamNames.includes(t.name) && (selCategory==='ALL'||t.category===selCategory) && (selTier==='ALL'||t.tier===selTier) && (selRegion==='ALL'||t.region===selRegion));
+    const available = masterTeams.filter(t => !activeTeamNames.includes(t.name));
     return { assignmentTeams: getSortedTeamsLogic(available, '') };
-  }, [masterTeams, seasons, adminTab, selCategory, selTier, selRegion]);
+  }, [masterTeams, seasons, adminTab]);
 
-  // --- Handlers ---
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
   const handleTouchEnd = () => { if (!touchStart || !touchEnd) return; const dist = touchStart - touchEnd; if (dist > 50) setBannerIdx((p) => (p + 1) % banners.length); if (dist < -50) setBannerIdx((p) => (p - 1 + banners.length) % banners.length); setTouchStart(0); setTouchEnd(0); };
@@ -144,61 +132,105 @@ export default function FootballLeagueApp() {
   const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
   const handleEditOwnerClick = (o: Owner) => { setEditOwnerId(o.docId!); setNewOwnerName(o.nickname); setNewOwnerPhoto(o.photo); };
   
+  // 🔥 [Update] 게임 생성 완료 후 스케줄 탭 이동
   const handleCreateSeason = async () => { 
     if(inputSeasonName) { 
-      const id=Date.now(); 
-      await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); 
-      setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); 
+      if(confirm("신규 게임을 생성하시겠습니까?")) {
+        const id=Date.now(); 
+        await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); 
+        setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); 
+        setCurrentView('SCHEDULE'); // 이동
+      }
     } else { alert("시즌 이름을 입력해주세요."); }
   };
   
+  const handleSaveBanner = async () => { if(bannerTitle && bannerUrl) { await addDoc(collection(db,"banners"),{title:bannerTitle,url:bannerUrl,order:Date.now()}); setBannerTitle(''); setBannerUrl(''); }};
+  const handleDeleteBanner = async (id:string) => { if(confirm("배너 삭제?")) await deleteDoc(doc(db,"banners",id)); };
+  
   const handleConfirmTeam = async () => { if(selOwnerId && selTeamName) { const m = masterTeams.find(t=>t.name===selTeamName); const o = owners.find(u=>u.id===Number(selOwnerId)); if(m && o) { const nt: Team = {id:Date.now(), seasonId:Number(adminTab), name:m.name, logo:m.logo, ownerName:o.nickname, region:m.region, tier:m.tier, win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0}; await updateDoc(doc(db,"seasons",String(adminTab)), {teams:[...(seasons.find(s=>s.id===adminTab)?.teams||[]), nt]}); } } };
   const handleRemoveTeamFromSeason = async (tid:number) => { if(confirm("제외하시겠습니까?")) await updateDoc(doc(db,"seasons",String(adminTab)), {teams:seasons.find(s=>s.id===adminTab)?.teams?.filter(t=>t.id!==tid)}); };
-  const handleRandomDraw = () => { const a = assignmentTeams; if(a.length>0) setSelTeamName(a[Math.floor(Math.random()*a.length)].name); };
   
+  // 🔥 [Algorithm] Advanced Schedule Generator
   const handleGenerateSchedule = async () => {
     const s = seasons.find(s => s.id === adminTab);
     if(!s || (s.teams||[]).length < 2) return alert("팀이 부족합니다 (최소 2팀)");
     if(!confirm("기존 스케줄이 초기화되고 새로 생성됩니다. 진행하시겠습니까?")) return;
 
-    const teams = [...(s.teams||[])].sort(() => Math.random() - 0.5);
+    // 1. Shuffle
+    let teams = [...(s.teams||[])].sort(() => Math.random() - 0.5);
     const rounds: Round[] = [];
 
+    // --- [TOURNAMENT LOGIC] ---
     if(s.type === 'TOURNAMENT') {
+        // [Constraint Check] 동일 오너 대진 최소화 (Shuffle 후 인접 인덱스 체크)
+        for(let i=0; i<teams.length-1; i+=2) {
+            if(teams[i].ownerName === teams[i+1]?.ownerName) {
+                // Swap candidate search
+                for(let j=i+2; j<teams.length; j++) {
+                    if(teams[j].ownerName !== teams[i].ownerName) {
+                        const temp = teams[i+1]; teams[i+1] = teams[j]; teams[j] = temp;
+                        break;
+                    }
+                }
+            }
+        }
+
         const nextPow2 = Math.pow(2, Math.ceil(Math.log2(teams.length)));
         const matchCount = nextPow2 / 2;
         let matches: Match[] = [];
+        
         for(let i=0; i<matchCount; i++) {
-           const h = teams[i*2], a = teams[i*2+1];
-           matches.push({ id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a ? a.name : 'BYE (부전승)', homeLogo: h.logo, awayLogo: a ? a.logo : FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: a ? a.ownerName : '-', homeScore: a?'':'1', awayScore: a?'':'0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: a?'UPCOMING':'BYE', youtubeUrl: '', stage: `Round of ${nextPow2}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` });
+           const h = teams[i*2];
+           const a = teams[i*2+1];
+           const stageName = getTournamentStageName(nextPow2, matchCount); // Use Helper
+           if (!a) {
+             matches.push({ 
+                 id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', 
+                 homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` 
+             });
+           } else {
+             matches.push({ 
+                 id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', 
+                 homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` 
+             });
+           }
         }
-        rounds.push({ round: 1, matches, seasonId: s.id, name: `Round of ${nextPow2}` });
+        rounds.push({ round: 1, matches, seasonId: s.id, name: getTournamentStageName(nextPow2, matchCount) });
+
         let rIdx = 2; let currentCount = matchCount / 2;
         while(currentCount >= 0.5) {
             let nextMatches: Match[] = [];
-            const stageName = currentCount === 0.5 ? 'FINAL' : currentCount === 1 ? 'SEMI-FINAL' : `Round of ${currentCount * 2}`;
+            const stageName = getTournamentStageName(nextPow2, currentCount);
             for(let i=0; i < Math.ceil(currentCount); i++) {
-                nextMatches.push({ id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, nextMatchId: currentCount > 0.5 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : undefined });
+                nextMatches.push({ id: `${s.id}_R${rIdx}_M${i}`, seasonId: s.id, home: 'TBD', away: 'TBD', homeLogo: FALLBACK_IMG, awayLogo: FALLBACK_IMG, homeOwner: '-', awayOwner: '-', homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: currentCount > 0.5 ? `${s.id}_R${rIdx+1}_M${Math.floor(i/2)}` : undefined });
             }
             rounds.push({ round: rIdx, matches: nextMatches, seasonId: s.id, name: stageName });
             if(currentCount === 0.5) break; currentCount /= 2; rIdx++;
         }
-    } else {
+    } 
+    // --- [LEAGUE LOGIC] ---
+    else {
         if(teams.length % 2 !== 0) teams.push({id:0, seasonId:0, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0});
         const numRounds = teams.length - 1; const half = teams.length / 2;
-        let allRoundMatches = []; let tempTeams = [...teams];
+        let tempTeams = [...teams];
+        
+        let allRoundMatches = [];
         for(let r=0; r<numRounds; r++) {
             let roundMatches: Match[] = [];
             for(let i=0; i<half; i++) {
                 const home = tempTeams[i], away = tempTeams[teams.length - 1 - i];
                 if(home.name !== 'BYE' && away.name !== 'BYE') {
-                    roundMatches.push({ id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}` });
+                    // [Constraint] 오너 충돌 체크 (단순 경고 혹은 로직 - 여기서는 그대로 생성하되 UI에서 오너 표시)
+                    roundMatches.push({ id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}`, matchLabel: `Game ${i+1}` });
                 }
             }
             allRoundMatches.push(roundMatches);
+            // Circle Method Rotation
             tempTeams.splice(1, 0, tempTeams.pop()!);
         }
         allRoundMatches.forEach((rm, idx) => rounds.push({round: idx+1, matches: rm, seasonId: s.id, name: `Round ${idx+1}`}));
+        
+        // Double Round Logic (Home & Away)
         if(s.leagueMode === 'DOUBLE') {
             const firstHalfLen = rounds.length;
             allRoundMatches.forEach((rm, idx) => {
@@ -208,7 +240,8 @@ export default function FootballLeagueApp() {
         }
     }
     await updateDoc(doc(db, "seasons", String(adminTab)), { rounds });
-};
+    alert(`스케줄 생성 완료!`);
+  };
 
   const handleMatchClick = (m: Match) => { setEditingMatch({...m}); setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl}); };
   const saveMatchResult = async () => {
@@ -252,7 +285,6 @@ export default function FootballLeagueApp() {
   };
 
   const handleDeleteSeason = async () => { if(confirm("시즌 삭제?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
-  const handleAdminAccess = () => { setCurrentView('ADMIN'); };
   const renderBanners = () => banners.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === bannerIdx ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>));
 
   return (
@@ -261,7 +293,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">ⓔFOOTBALL SUPER LEAGUE™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_107_Team_UX</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_01_02_01</p>
         </div>
       </div>
       
@@ -292,7 +324,7 @@ export default function FootballLeagueApp() {
                                 {r.matches.map(m => (
                                     <div key={m.id} className="flex justify-between items-center bg-black p-3 rounded-lg" onClick={()=>handleMatchClick(m)}>
                                         <div className="flex flex-col items-center w-1/3"><img src={m.homeLogo} className="w-8 h-8 rounded-full bg-white p-0.5"/><span className="text-[10px] mt-1">{m.home}</span></div>
-                                        <div className="text-xl font-bold">{m.status==='FINISHED' ? `${m.homeScore}:${m.awayScore}` : 'VS'}</div>
+                                        <div className="flex flex-col items-center"><span className="text-[9px] text-slate-500 mb-1">{m.matchLabel}</span><div className="text-xl font-bold">{m.status==='FINISHED' ? `${m.homeScore}:${m.awayScore}` : 'VS'}</div></div>
                                         <div className="flex flex-col items-center w-1/3"><img src={m.awayLogo} className="w-8 h-8 rounded-full bg-white p-0.5"/><span className="text-[10px] mt-1">{m.away}</span></div>
                                     </div>
                                 ))}
@@ -316,11 +348,36 @@ export default function FootballLeagueApp() {
 
              {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
              {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
-             
-             {/* 🔥 NEW Banner Manager */}
              {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
 
-             {adminTab === 'NEW' && <div className="space-y-4"><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="Season Name" className="bg-slate-800 w-full p-4 rounded"/><button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-4 rounded-xl font-bold">Create Season</button></div>}
+             {adminTab === 'NEW' && (
+                 <div className="space-y-4">
+                     <div className="space-y-1">
+                         <label className="text-xs text-slate-400 font-bold">1. Season Name</label>
+                         <input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="예: 2026 Season 1" className="bg-slate-800 w-full p-4 rounded border border-slate-700"/>
+                     </div>
+                     <div className="space-y-1">
+                         <label className="text-xs text-slate-400 font-bold">2. Type & Mode</label>
+                         <div className="flex gap-2">
+                             <select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-800 p-4 rounded border border-slate-700 flex-1"><option value="LEAGUE">LEAGUE</option><option value="TOURNAMENT">TOURNAMENT</option></select>
+                             {inputSeasonType === 'LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-800 p-4 rounded border border-slate-700 flex-1"><option value="SINGLE">SINGLE</option><option value="DOUBLE">DOUBLE</option></select>}
+                         </div>
+                     </div>
+                     <div className="space-y-1">
+                         <label className="text-xs text-slate-400 font-bold flex justify-between">3. Prizes <span className="text-emerald-500 cursor-pointer" onClick={()=>setIsAutoPrize(!isAutoPrize)}>{isAutoPrize?'⚡ Auto (50/20/10)':'✏️ Manual'}</span></label>
+                         <input type="number" value={inputTotalPrize} onChange={e=>{setInputTotalPrize(Number(e.target.value)); setIsAutoPrize(true);}} className="bg-slate-800 w-full p-4 rounded border border-slate-700 text-right text-lg font-bold text-emerald-400 mb-2"/>
+                         <div className="grid grid-cols-2 gap-2 text-xs">
+                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥇 1st (50%)</span><span>{prizes.first.toLocaleString()}</span></div>
+                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥈 2nd (20%)</span><span>{prizes.second.toLocaleString()}</span></div>
+                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥉 3rd (10%)</span><span>{prizes.third.toLocaleString()}</span></div>
+                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>👟 Score (10%)</span><span>{prizes.scorer.toLocaleString()}</span></div>
+                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🅰️ Assist (10%)</span><span>{prizes.assist.toLocaleString()}</span></div>
+                         </div>
+                         {!isAutoPrize && <div className="text-[10px] text-orange-400">* 수동 모드: 상금 배분을 직접 입력하려면 위 값을 무시하고 내부 로직을 수정해야 합니다. (현재 자동 계산 우선)</div>}
+                     </div>
+                     <button onClick={handleCreateSeason} className="w-full bg-emerald-600 py-4 rounded-xl font-bold">Create Season</button>
+                 </div>
+             )}
              
              {typeof adminTab === 'number' && (
                 <div className="space-y-4">
@@ -331,7 +388,7 @@ export default function FootballLeagueApp() {
                 </div>
              )}
 
-             {adminTab === 'OWNER' && <div className="flex gap-2"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="Owner Name" className="bg-slate-800 p-3 rounded w-full"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="Photo URL" className="bg-slate-950 p-3 rounded w-full"/><button onClick={handleSaveOwner} className="bg-purple-600 px-6 rounded font-bold">Save</button></div>}
+             {adminTab === 'OWNER' && <div className="flex gap-2"><input value={newOwnerName} onChange={e=>setNewOwnerName(e.target.value)} placeholder="Owner Name" className="bg-slate-950 p-3 rounded w-full"/><input value={newOwnerPhoto} onChange={e=>setNewOwnerPhoto(e.target.value)} placeholder="Photo URL" className="bg-slate-950 p-3 rounded w-full"/><button onClick={handleSaveOwner} className="bg-purple-600 px-6 rounded font-bold">Save</button></div>}
              {adminTab === 'OWNER' && <div className="grid grid-cols-2 gap-2 mt-4">{owners.map(o => <div key={o.id} onClick={()=>handleEditOwnerClick(o)} className="p-2 bg-black rounded flex items-center gap-2 cursor-pointer"><img src={o.photo} className="w-8 h-8 rounded-full" /><span>{o.nickname}</span></div>)}</div>}
            </div>
         )}
@@ -346,6 +403,10 @@ export default function FootballLeagueApp() {
                  <RecordInput type="homeScorer" inputValue={recordInputs.homeScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeScorers} label="Home Goals" colorClass="text-blue-400" />
                  <div className="flex flex-col justify-center items-center gap-4"><div className="flex gap-2"><input type="number" value={matchInputs.homeScore} onChange={e=>setMatchInputs({...matchInputs, homeScore:e.target.value})} className="w-16 h-16 text-center text-2xl bg-black rounded" /><input type="number" value={matchInputs.awayScore} onChange={e=>setMatchInputs({...matchInputs, awayScore:e.target.value})} className="w-16 h-16 text-center text-2xl bg-black rounded" /></div><input value={matchInputs.youtube} onChange={e=>setMatchInputs({...matchInputs,youtube:e.target.value})} placeholder="YouTube Link" className="w-full bg-black p-2 rounded text-center text-xs"/><button onClick={saveMatchResult} className="bg-emerald-600 px-6 py-2 rounded font-bold">SAVE</button></div>
                  <RecordInput type="awayScorer" inputValue={recordInputs.awayScorer} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayScorers} label="Away Goals" colorClass="text-red-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                 <RecordInput type="homeAssist" inputValue={recordInputs.homeAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.homeAssists} label="Home Assists" colorClass="text-blue-300" />
+                 <RecordInput type="awayAssist" inputValue={recordInputs.awayAssist} onInputChange={handleRecordInputChange} onAdd={handleRecordAdd} onRemove={handleRecordRemove} records={editingMatch.awayAssists} label="Away Assists" colorClass="text-red-300" />
               </div>
            </div>
         </div>
