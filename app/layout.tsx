@@ -1,11 +1,11 @@
+import React from "react"; // 🔥 [Fix] Added React import
 import type { Metadata } from "next";
 import "./globals.css";
 
-// 🔥 [Meta] Social Image & Favicon & Viewport Setup (Next.js 13 Compatible)
+// 🔥 [Meta] Social Image & Favicon & Viewport Setup
 export const metadata: Metadata = {
   title: "eFootball™ Live evolution™",
   description: "Join the League! eFootball Super League Management System.",
-  // Next.js 13에서는 viewport와 themeColor를 metadata 안에 넣습니다.
   viewport: {
     width: "device-width",
     initialScale: 1,
