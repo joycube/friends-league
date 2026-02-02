@@ -35,8 +35,11 @@ export default function FootballLeagueApp() {
   const [owners, setOwners] = useState<Owner[]>([]);
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
+  
+  // 🔥 Banner State
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [bannerIdx, setBannerIdx] = useState(0);
+  const [bannerIdx, setBannerIdx] = useState<number>(-1); 
+  const [isBannerInitialized, setIsBannerInitialized] = useState(false);
 
   // Touch
   const [touchStart, setTouchStart] = useState(0);
@@ -72,22 +75,81 @@ export default function FootballLeagueApp() {
     return () => clearInterval(t);
   }, []);
 
+  // 🔥 [Logic] Banner Rotation (Random Video First, then Random Mix)
   useEffect(() => {
-    if (banners.length === 0) return;
-    const sortedBanners = [...banners].sort((a,b) => {
-        const aIsVid = a.url.includes('youtube') || a.url.includes('youtu.be');
-        const bIsVid = b.url.includes('youtube') || b.url.includes('youtu.be');
-        return (aIsVid === bIsVid) ? 0 : aIsVid ? -1 : 1;
-    });
-    const currentBanner = sortedBanners[bannerIdx % sortedBanners.length];
-    if(!currentBanner) return;
-    const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
-    const delay = isVideo ? 15000 : 5000;
-    const t = setTimeout(() => setBannerIdx((prev) => (prev + 1) % sortedBanners.length), delay);
-    return () => clearTimeout(t);
-  }, [bannerIdx, banners]);
+    if (!banners || banners.length === 0) return;
 
-  // Auto Prize Logic
+    // 1. Initial Load: Pick a random VIDEO first
+    if (!isBannerInitialized) {
+        const videoIndices = banners.map((b, i) => (b.url.includes('youtube') || b.url.includes('youtu.be')) ? i : -1).filter(i => i !== -1);
+        
+        if (videoIndices.length > 0) {
+            const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
+            setBannerIdx(randomVideoIdx);
+        } else {
+            setBannerIdx(Math.floor(Math.random() * banners.length));
+        }
+        setIsBannerInitialized(true);
+        return;
+    }
+
+    // 2. Rotation Logic
+    const currentBanner = banners[bannerIdx];
+    if (!currentBanner) return;
+
+    const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
+    const delay = isVideo ? 15000 : 5000; 
+
+    const t = setTimeout(() => {
+        let nextIdx = Math.floor(Math.random() * banners.length);
+        if (banners.length > 1 && nextIdx === bannerIdx) {
+            nextIdx = (nextIdx + 1) % banners.length;
+        }
+        setBannerIdx(nextIdx);
+    }, delay);
+
+    return () => clearTimeout(t);
+  }, [banners, bannerIdx, isBannerInitialized]);
+
+  // 🔥 [Logic] Deep Linking
+  useEffect(() => {
+      if (viewSeasonId > 0) {
+          const params = new URLSearchParams(window.location.search);
+          params.set('view', currentView);
+          params.set('season', String(viewSeasonId));
+          window.history.replaceState(null, '', `?${params.toString()}`);
+      }
+  }, [currentView, viewSeasonId]);
+
+  // 🔥 [Logic] Initial Load
+  useEffect(() => {
+      if (seasons.length === 0) return; 
+
+      const params = new URLSearchParams(window.location.search);
+      const paramView = params.get('view');
+      const paramSeasonId = Number(params.get('season'));
+
+      if (paramView && ['RANKING', 'SCHEDULE', 'HISTORY', 'TUTORIAL', 'ADMIN'].includes(paramView)) {
+          setCurrentView(paramView as any);
+      }
+
+      if (paramSeasonId) {
+          const targetSeason = seasons.find(s => s.id === paramSeasonId);
+          if (targetSeason) {
+              setViewSeasonId(targetSeason.id);
+          } else {
+              alert("현재 해당 시즌을 찾을 수가 없습니다. 메인 페이지로 이동합니다.");
+              setViewSeasonId(seasons[0].id);
+              const newParams = new URLSearchParams(window.location.search);
+              newParams.delete('season');
+              window.history.replaceState(null, '', `?${newParams.toString()}`);
+          }
+      } else if (viewSeasonId === 0) {
+          setViewSeasonId(seasons[0].id);
+      }
+  }, [seasons]); 
+
+  // Prize Logic
   useEffect(() => { 
     if (isAutoPrize) {
       setPrizes({ 
@@ -105,7 +167,6 @@ export default function FootballLeagueApp() {
     const u2 = onSnapshot(collection(db, "master_teams"), s => setMasterTeams(s.docs.map(d => ({id:d.id, ...d.data()} as MasterTeam))));
     const u3 = onSnapshot(query(collection(db, "seasons"), orderBy("id", "desc")), s => { 
         const d = s.docs.map(doc => doc.data() as Season); setSeasons(d); 
-        if(d.length > 0 && viewSeasonId === 0) setViewSeasonId(d[0].id);
     });
     const u4 = onSnapshot(collection(db, "banners"), s => setBanners(s.docs.map(d => ({id:d.id, ...d.data()} as Banner))));
     const u5 = onSnapshot(collection(db, "leagues"), s => setLeagues(s.docs.map(d => ({id:d.id, ...d.data()} as League))));
@@ -118,7 +179,9 @@ export default function FootballLeagueApp() {
     return vId ? `https://img.youtube.com/vi/${vId}/mqdefault.jpg` : FALLBACK_IMG;
   };
 
+  // 🔥 [Fix] Added Safety Check for Banners
   const sortedBannersDisplay = useMemo(() => {
+      if (!banners) return [];
       return [...banners].sort((a,b) => {
         const aIsVid = a.url.includes('youtube') || a.url.includes('youtu.be');
         const bIsVid = b.url.includes('youtube') || b.url.includes('youtu.be');
@@ -126,7 +189,6 @@ export default function FootballLeagueApp() {
     });
   }, [banners]);
 
-  // 🔥 [Helper] Composite Key
   const getPlayerKey = (name: string, team: string, owner: string) => `${name.trim()}-${team}-${owner}`;
 
   // --- Ranking Data ---
@@ -241,7 +303,6 @@ export default function FootballLeagueApp() {
       return { owners: Array.from(ownerHist.values()).sort((a,b) => b.points - a.points || b.prize - a.prize), teams: Array.from(teamHist.values()).sort((a,b) => b.points - a.points), players: Array.from(playerHistMap.values()).sort((a:any,b:any) => b.goals - a.goals || b.assists - a.assists) };
   }, [seasons]);
 
-  // Autocomplete
   const getTeamPlayers = (teamName: string) => {
     const players = new Set<string>();
     activeRankingData.players.forEach((p:any) => { if(p.team === teamName) players.add(p.name); });
@@ -292,7 +353,6 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [Fix] Improved Schedule Logic (Safety against undefined)
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
     let shuffled = [...teams].sort(() => Math.random() - 0.5);
     const rounds: Round[] = [];
@@ -338,11 +398,9 @@ export default function FootballLeagueApp() {
   };
 
   const handleRemoveTeamFromSeason = async (tid:number) => { if(confirm("제외하시겠습니까?")) await updateDoc(doc(db,"seasons",String(adminTab)), {teams:seasons.find(s=>s.id===adminTab)?.teams?.filter(t=>t.id!==tid)}); };
-  // 🔥 [Fix] handleMatchClick defined HERE before use
   const handleMatchClick = (m: Match) => { 
       setEditingMatch({...m}); 
       setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl});
-      // Reset input fields
       setRecordInputs({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
   };
   
@@ -354,15 +412,14 @@ export default function FootballLeagueApp() {
     }
   };
   
-  const handleRecordAdd = (type: string) => { if(!editingMatch)return; const k = type as keyof typeof recordInputs; const count = Number(recordInputs[k].count); if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Number(p.homeScore)+count)})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Number(p.awayScore)+count)})); const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; setEditingMatch({...editingMatch,[f]:[...list,{id:Date.now(),name:recordInputs[k].name,count}]}); };
+  const handleRecordAdd = (type: string) => { if(!editingMatch)return; const k = type as keyof typeof recordInputs; const count = Number(recordInputs[k].count); if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Number(p.homeScore)+count)})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Number(p.awayScore)+count)})); const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; setEditingMatch({...editingMatch,[f]:[...list,{id:Date.now(),name:recordInputs[k].name.trim(),count}]}); setRecordInputs(prev => ({...prev, [type]: {...prev[type as keyof typeof prev], name: ''}})); };
   const handleRecordRemove = (type: string, id: number) => { if(!editingMatch)return; const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; const item=list.find(r=>r.id===id); if(item){ if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Math.max(0,Number(p.homeScore)-item.count))})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Math.max(0,Number(p.awayScore)-item.count))})); } setEditingMatch({...editingMatch,[f]:list.filter(r=>r.id!==id)}); };
   const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
-  const renderBanners = () => sortedBannersDisplay.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>));
+  // 🔥 [Fix] Added Safety Check for Banners Map
+  const renderBanners = () => (sortedBannersDisplay && sortedBannersDisplay.length > 0) ? sortedBannersDisplay.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
 
-  // 🔥 Admin Password Handler
-  const handleAdminLogin = () => {
-      if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); }
-  };
+  const handleShareLink = () => { navigator.clipboard.writeText(window.location.href); alert("🔗 링크가 복사되었습니다!"); };
+  const handleAdminLogin = () => { if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); } };
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
@@ -370,19 +427,15 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_07_24_Scoreboard_YouTube_Fix</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_09_26_Stable_Build</p>
         </div>
+        <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
       </div>
       
-      {/* 🟢 Navigation */}
       <div className="max-w-6xl mx-auto px-4 mt-6 mb-8">
           <div className="grid grid-cols-5 gap-2">
               {['RANKING', 'SCHEDULE', 'HISTORY', 'TUTORIAL', 'ADMIN'].map(t => (
-                  <button key={t} onClick={() => setCurrentView(t as any)} 
-                      className={`h-14 md:h-16 rounded-xl border border-slate-800 flex flex-col items-center justify-center transition-all active:scale-95 shadow-lg ${currentView===t ? 'bg-gradient-to-br from-emerald-900 to-slate-900 border-emerald-500 text-emerald-400' : 'bg-slate-950 text-slate-500 hover:bg-slate-900 hover:text-slate-300'}`}
-                  >
-                      <span className="text-[10px] md:text-xs font-black tracking-widest">{t}</span>
-                  </button>
+                  <button key={t} onClick={() => setCurrentView(t as any)} className={`h-14 md:h-16 rounded-xl border border-slate-800 flex flex-col items-center justify-center transition-all active:scale-95 shadow-lg ${currentView===t ? 'bg-gradient-to-br from-emerald-900 to-slate-900 border-emerald-500 text-emerald-400' : 'bg-slate-950 text-slate-500 hover:bg-slate-900 hover:text-slate-300'}`}><span className="text-[10px] md:text-xs font-black tracking-widest">{t}</span></button>
               ))}
           </div>
       </div>
@@ -453,8 +506,8 @@ export default function FootballLeagueApp() {
                           <tbody>
                               {activeRankingData.players
                                   .filter(p => rankPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
-                                  .sort((a:any,b:any) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                                  .slice(0, 20).map((p:any,i:number)=>(
+                                  .sort((a,b) => rankPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
+                                  .slice(0, 20).map((p,i)=>(
                                   <tr key={i} className="border-b border-slate-800/50">
                                       <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
                                       <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
@@ -505,13 +558,19 @@ export default function FootballLeagueApp() {
                                 <div key={m.id} onClick={() => handleMatchClick(m)} className={`relative bg-slate-950 p-3 rounded-xl border ${m.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}>
                                     <div className="flex justify-between items-center mb-2">
                                         <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded">{m.matchLabel || 'Match'}</span>
-                                        {m.youtubeUrl && <span className="text-red-500 text-[9px] font-bold flex items-center gap-1">▶ Highlights</span>}
+                                        {m.youtubeUrl && (
+                                            <span 
+                                                className="text-[9px] text-red-500 font-bold flex items-center gap-1 z-20 cursor-pointer hover:underline"
+                                                onClick={(e) => { e.stopPropagation(); window.open(m.youtubeUrl, '_blank'); }}
+                                            >
+                                                <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3" alt="YT"/> 하이라이트
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div className="flex flex-col items-center w-1/3 gap-1">
                                             <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
-                                            {/* 🔥 [UI Fix] Owner Name */}
                                             <span className="text-[9px] text-slate-500">{m.homeOwner}</span>
                                         </div>
                                         <div className="flex flex-col items-center">
@@ -524,29 +583,13 @@ export default function FootballLeagueApp() {
                                             ) : (
                                                 <div className="bg-slate-900 px-3 py-1 rounded text-xs font-bold text-slate-500">VS</div>
                                             )}
-                                            
-                                            {/* 🔥 [Fix] YouTube Button Center & Clickable */}
-                                            {m.youtubeUrl && (
-                                                <a 
-                                                  href={m.youtubeUrl} 
-                                                  target="_blank" 
-                                                  rel="noreferrer" 
-                                                  onClick={(e) => e.stopPropagation()} 
-                                                  className="mt-2 flex items-center gap-1 text-[10px] text-red-500 font-bold bg-slate-900/50 px-3 py-1 rounded-full border border-slate-800 hover:bg-slate-800 hover:border-red-500 transition-colors z-20"
-                                                >
-                                                    <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3" alt="YT"/>
-                                                    하이라이트
-                                                </a>
-                                            )}
                                         </div>
                                         <div className="flex flex-col items-center w-1/3 gap-1">
                                             <img src={m.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.away}</span>
-                                            {/* 🔥 [UI Fix] Owner Name */}
                                             <span className="text-[9px] text-slate-500">{m.awayOwner}</span>
                                         </div>
                                     </div>
-                                    {/* 🔥 [UI Fix] Score Count */}
                                     {m.status === 'FINISHED' && (
                                         <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[9px]">
                                             <div className="text-center space-y-0.5">
@@ -718,7 +761,7 @@ export default function FootballLeagueApp() {
                                         <input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-800 w-full p-4 rounded border border-slate-700 text-right text-lg font-bold text-emerald-400 mb-2 text-base" placeholder="Total Prize"/>
                                         <div className="grid grid-cols-2 gap-2 text-xs">
                                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥇 1st (50%)</span><span>{prizes.first.toLocaleString()}</span></div>
-                                            <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥈 2nd (20%)</span><span>{prizes.second.toLocaleString()}</span></div>
+                                            <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥈 2nd (30%)</span><span>{prizes.second.toLocaleString()}</span></div>
                                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥉 3rd (10%)</span><span>{prizes.third.toLocaleString()}</span></div>
                                             <div className="bg-slate-950 p-2 rounded flex justify-between"><span>👟 Scorer (10%)</span><span>{prizes.scorer.toLocaleString()}</span></div>
                                         </div>
@@ -729,7 +772,6 @@ export default function FootballLeagueApp() {
                                         <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
-                                        <div className="col-span-2"><label className="text-[10px] text-slate-500">🅰️ Assist (Optional)</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                     </div>
                                 )}
                             </div>
