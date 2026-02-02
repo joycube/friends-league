@@ -27,6 +27,7 @@ export default function FootballLeagueApp() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState('');
 
+  // 🔥 [New] Real-time Clock
   const [currentTime, setCurrentTime] = useState<string>('');
 
   // Data State
@@ -38,9 +39,10 @@ export default function FootballLeagueApp() {
   
   // 🔥 Banner State
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [bannerIdx, setBannerIdx] = useState<number>(0); 
+  const [bannerIdx, setBannerIdx] = useState<number>(-1); 
+  const [isBannerInitialized, setIsBannerInitialized] = useState(false);
 
-  // 🔥 [Fix] Restore Touch States (for Swipe)
+  // Touch
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
@@ -69,43 +71,64 @@ export default function FootballLeagueApp() {
   const [recordInputs, setRecordInputs] = useState({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
 
   // --- Effects ---
+  // 🔥 [Logic] Time Ticker (YY.MM.DD HH:mm:ss)
   useEffect(() => {
-    const t = setInterval(() => setCurrentTime(new Date().toLocaleString()), 1000);
+    const updateTime = () => {
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        setCurrentTime(`${yy}.${mm}.${dd} ${hh}:${min}:${ss}`);
+    };
+    updateTime();
+    const t = setInterval(updateTime, 1000);
     return () => clearInterval(t);
   }, []);
 
-  // 🔥 [Logic] Banner Sorting (Videos First) & Rotation
-  const sortedBannersDisplay = useMemo(() => {
-    if (!banners || banners.length === 0) return [];
-    // Sort: Videos come first
-    return [...banners].sort((a,b) => {
-      const aIsVid = a.url.includes('youtube') || a.url.includes('youtu.be');
-      const bIsVid = b.url.includes('youtube') || b.url.includes('youtu.be');
-      return (aIsVid === bIsVid) ? 0 : aIsVid ? -1 : 1;
-    });
-  }, [banners]);
-
+  // 🔥 [Logic] Banner Logic (Random Video First -> Random All)
   useEffect(() => {
-    if (sortedBannersDisplay.length === 0) return;
+    if (!banners || banners.length === 0) return;
 
-    const currentBanner = sortedBannersDisplay[bannerIdx];
+    // 1. Initial Load: Pick a random VIDEO first
+    if (!isBannerInitialized) {
+        // Find indices of all videos
+        const videoIndices = banners.map((b, i) => (b.url.includes('youtube') || b.url.includes('youtu.be')) ? i : -1).filter(i => i !== -1);
+        
+        if (videoIndices.length > 0) {
+            // Pick ONE random video from the list
+            const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
+            setBannerIdx(randomVideoIdx);
+        } else {
+            // If no videos, pick any random banner
+            setBannerIdx(Math.floor(Math.random() * banners.length));
+        }
+        setIsBannerInitialized(true);
+        return;
+    }
+
+    // 2. Rotation Logic (Next Banner)
+    const currentBanner = banners[bannerIdx];
     if (!currentBanner) return;
 
     const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
     const delay = isVideo ? 15000 : 5000; // 15s for video, 5s for image
 
     const t = setTimeout(() => {
-        // After first play (idx 0), pick random
-        let nextIdx = Math.floor(Math.random() * sortedBannersDisplay.length);
-        // Avoid repeating same banner immediately if possible
-        if (sortedBannersDisplay.length > 1 && nextIdx === bannerIdx) {
-            nextIdx = (nextIdx + 1) % sortedBannersDisplay.length;
+        // Pick NEXT random index from ALL banners
+        let nextIdx = Math.floor(Math.random() * banners.length);
+        
+        // Optional: Try to avoid repeating the exact same banner immediately if there are others
+        if (banners.length > 1 && nextIdx === bannerIdx) {
+            nextIdx = (nextIdx + 1) % banners.length;
         }
         setBannerIdx(nextIdx);
     }, delay);
 
     return () => clearTimeout(t);
-  }, [sortedBannersDisplay, bannerIdx]);
+  }, [banners, bannerIdx, isBannerInitialized]);
 
   // 🔥 [Logic] Deep Linking
   useEffect(() => {
@@ -309,16 +332,9 @@ export default function FootballLeagueApp() {
     return { availableTeams: getSortedTeamsLogic(filtered, ''), assignmentRegions: getSortedLeagues(regions), clubLeagues: getSortedLeagues(cList), nationalLeagues: getSortedLeagues(nList) };
   }, [masterTeams, seasons, adminTab, assignCategory, assignRegion, assignTier, assignSearch, leagues]);
 
-  // 🔥 [Fix] Restore Swipe Handlers
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
-  const handleTouchEnd = () => { 
-    if (!touchStart || !touchEnd) return; 
-    const dist = touchStart - touchEnd; 
-    if (dist > 50) setBannerIdx((p) => (p + 1) % sortedBannersDisplay.length); 
-    if (dist < -50) setBannerIdx((p) => (p - 1 + sortedBannersDisplay.length) % sortedBannersDisplay.length); 
-    setTouchStart(0); setTouchEnd(0); 
-  };
+  const handleTouchEnd = () => { if (!touchStart || !touchEnd) return; const dist = touchStart - touchEnd; if (dist > 50) setBannerIdx((p) => (p + 1) % banners.length); if (dist < -50) setBannerIdx((p) => (p - 1 + banners.length) % banners.length); setTouchStart(0); setTouchEnd(0); };
 
   const handleRecordInputChange = (type: string, field: string, value: string) => { setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } })); };
   const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
@@ -351,11 +367,7 @@ export default function FootballLeagueApp() {
     const rounds: Round[] = [];
     if(s.type === 'TOURNAMENT') {
         for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
-        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; 
-        
-        // 🔥 [Fix] Type Annotation
-        let matches: Match[] = [];
-
+        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; let matches: Match[] = [];
         for(let i=0; i<matchCount; i++) { const h = shuffled[i*2], a = shuffled[i*2+1]; const stageName = getTournamentStageName(nextPow2, matchCount);
            matches.push(a ? { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } : { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` });
         }
@@ -442,7 +454,7 @@ export default function FootballLeagueApp() {
   const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
   
   // 🔥 [Fix] Added Safety Check for Banners Map
-  const renderBanners = () => (sortedBannersDisplay && sortedBannersDisplay.length > 0) ? sortedBannersDisplay.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
+  const renderBanners = () => (banners && banners.length > 0) ? banners.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % banners.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
 
   const handleShareLink = () => { navigator.clipboard.writeText(window.location.href); alert("🔗 링크가 복사되었습니다!"); };
   const handleAdminLogin = () => { if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); } };
@@ -452,9 +464,16 @@ export default function FootballLeagueApp() {
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
-          <h1 className="text-2xl md:text-4xl text-white font-black italic">eFootball™ Live evolution™</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_10_27_Final_Clean</p>
+          {/* 🔥 [Fix] Updated Header Title & Layout */}
+          <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
+          <p className="text-emerald-400 text-[10px] font-sans not-italic tracking-widest mt-1 opacity-80">ver. P_12_01_Banner_UI_Complete</p>
         </div>
+        
+        {/* 🔥 [Feature] Real-time Clock */}
+        <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">
+            {currentTime}
+        </div>
+
         <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
       </div>
       
@@ -711,7 +730,7 @@ export default function FootballLeagueApp() {
                 {historyTab === 'PLAYERS' && (
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                         <div className="flex bg-slate-950 border-b border-slate-800">
-                            <button onClick={()=>setHistPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
+                            <button onClick={()=>setHistPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
                             <button onClick={()=>setHistPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
                         </div>
                         <table className="w-full text-left text-xs uppercase">
@@ -802,6 +821,7 @@ export default function FootballLeagueApp() {
                                         <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                         <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                        <div className="col-span-2"><label className="text-[10px] text-slate-500">🅰️ Assist (Optional)</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
                                     </div>
                                 )}
                             </div>
@@ -856,6 +876,27 @@ export default function FootballLeagueApp() {
            </div>
         )}
       </main>
+
+      {/* 🔥 [Updated] Footer */}
+      <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
+          <p className="text-slate-500 text-xs mb-1 font-bold">게임은 eFootball 2025 기반으로 게임을 진행 합니다.</p>
+          <p className="text-slate-500 text-xs mb-4">게임 참여 문의 : joycbue@gmail.com</p>
+          
+          <div className="flex justify-center gap-6 mb-6">
+              <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6" alt="Konami"/>
+              </a>
+              <a href="https://www.konami.com/efootball/ko/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="eFootball Official">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/football.png" className="w-6 h-6" alt="eFootball"/>
+              </a>
+              <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="YouTube Channel">
+                  <img src="https://img.icons8.com/ios-filled/50/ffffff/youtube-play.png" className="w-6 h-6" alt="YouTube"/>
+              </a>
+          </div>
+          
+          <p className="text-[9px] text-slate-700 mt-2 uppercase tracking-widest">© 2026 eFootball Live Evolution League. All Rights Reserved.</p>
+          <p className="text-[9px] text-slate-800 mt-1">Created 26.01</p>
+      </footer>
 
       {editingMatch && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4">
