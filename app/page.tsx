@@ -10,6 +10,9 @@ import { RecordInput } from './components/RecordInput';
 import { AdminLeagueManager, AdminTeamManager } from './components/AdminTeamManagement'; 
 import { AdminBannerManager } from './components/AdminBannerManager'; 
 
+// 🔥 Import Commentary Data
+import { COMMENTARY_POOL } from './commentaryData';
+
 export default function FootballLeagueApp() {
   // Navigation
   const [currentView, setCurrentView] = useState<'RANKING' | 'SCHEDULE' | 'HISTORY' | 'ADMIN' | 'TUTORIAL'>('RANKING');
@@ -36,12 +39,15 @@ export default function FootballLeagueApp() {
   const [masterTeams, setMasterTeams] = useState<MasterTeam[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
   
-  // 🔥 Banner State
+  // Banner State
   const [banners, setBanners] = useState<Banner[]>([]);
   const [bannerIdx, setBannerIdx] = useState<number>(0); 
   const [isBannerInitialized, setIsBannerInitialized] = useState(false);
 
-  // 🔥 [Fix] Restore Touch States
+  // Animation Trigger State
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Touch
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
@@ -59,7 +65,7 @@ export default function FootballLeagueApp() {
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
 
-  // 🔥 [Fix] Admin Assignment States
+  // Admin Assignment States
   const [selOwnerId, setSelOwnerId] = useState<number | ''>('');
   const [assignCategory, setAssignCategory] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL'); 
   const [assignRegion, setAssignRegion] = useState<string>('ALL'); 
@@ -87,35 +93,32 @@ export default function FootballLeagueApp() {
     };
     updateTime();
     const t = setInterval(updateTime, 1000);
+    // Trigger animation for graph
+    setTimeout(() => setIsLoaded(true), 500);
     return () => clearInterval(t);
   }, []);
 
-  // 🔥 [Logic] Banner Logic Fix: Random Video First
+  // Banner Logic
   useEffect(() => {
     if (!banners || banners.length === 0) return;
 
-    // 1. Initial Load: Pick a random VIDEO first
     if (!isBannerInitialized) {
         const videoIndices = banners.map((b, i) => (b.url.includes('youtube') || b.url.includes('youtu.be')) ? i : -1).filter(i => i !== -1);
-        
         if (videoIndices.length > 0) {
-            // Pick ONE random video from the list
             const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
             setBannerIdx(randomVideoIdx);
         } else {
-            // If no videos, pick any random banner
             setBannerIdx(Math.floor(Math.random() * banners.length));
         }
         setIsBannerInitialized(true);
         return;
     }
 
-    // 2. Rotation Logic (Next Banner)
     const currentBanner = banners[bannerIdx];
     if (!currentBanner) return;
 
     const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
-    const delay = isVideo ? 15000 : 5000; // 15s for video, 5s for image
+    const delay = isVideo ? 15000 : 5000; 
 
     const t = setTimeout(() => {
         let nextIdx = Math.floor(Math.random() * banners.length);
@@ -161,13 +164,7 @@ export default function FootballLeagueApp() {
   // Prize Logic
   useEffect(() => { 
     if (isAutoPrize) {
-      setPrizes({ 
-        first: Math.floor(inputTotalPrize * 0.5), 
-        second: Math.floor(inputTotalPrize * 0.3), 
-        third: Math.floor(inputTotalPrize * 0.1), 
-        scorer: Math.floor(inputTotalPrize * 0.1), 
-        assist: 0 
-      }); 
+      setPrizes({ first: Math.floor(inputTotalPrize * 0.5), second: Math.floor(inputTotalPrize * 0.3), third: Math.floor(inputTotalPrize * 0.1), scorer: Math.floor(inputTotalPrize * 0.1), assist: 0 }); 
     }
   }, [inputTotalPrize, isAutoPrize]);
 
@@ -185,6 +182,14 @@ export default function FootballLeagueApp() {
     const vId = url.includes('youtu.be') ? url.split('/').pop() : url.split('v=')[1]?.split('&')[0];
     return vId ? `https://img.youtube.com/vi/${vId}/mqdefault.jpg` : FALLBACK_IMG;
   };
+
+  const sortedBannersDisplay = useMemo(() => {
+      return [...banners].sort((a,b) => {
+        const aIsVid = a.url.includes('youtube') || a.url.includes('youtu.be');
+        const bIsVid = b.url.includes('youtube') || b.url.includes('youtu.be');
+        return (aIsVid === bIsVid) ? 0 : aIsVid ? -1 : 1;
+    });
+  }, [banners]);
 
   const getPlayerKey = (name: string, team: string, owner: string) => `${name.trim()}-${team}-${owner}`;
 
@@ -304,13 +309,70 @@ export default function FootballLeagueApp() {
       return { owners: Array.from(ownerHist.values()).sort((a,b) => b.points - a.points || b.prize - a.prize), teams: Array.from(teamHist.values()).sort((a,b) => b.points - a.points), players: Array.from(playerHistMap.values()).sort((a:any,b:any) => b.goals - a.goals || b.assists - a.assists) };
   }, [seasons]);
 
+  // Commentary Engine using Data File
+  const getMatchCommentary = (m: Match) => {
+      if (m.status !== 'FINISHED') return null;
+      
+      const homeScore = Number(m.homeScore);
+      const awayScore = Number(m.awayScore);
+      const diff = Math.abs(homeScore - awayScore);
+      const totalGoals = homeScore + awayScore;
+      const winnerName = homeScore > awayScore ? m.home : m.away;
+      const loserName = homeScore > awayScore ? m.away : m.home;
+      
+      const pick = (arr: string[]) => {
+          let text = arr[Math.floor(Math.random() * arr.length)];
+          // Replace Placeholders
+          text = text.replace(/\[WIN\]/g, winnerName)
+                     .replace(/\[LOSE\]/g, loserName)
+                     .replace(/\[HOME\]/g, m.home)
+                     .replace(/\[AWAY\]/g, m.away);
+          return text;
+      };
+
+      if (diff >= 4) return pick(COMMENTARY_POOL.THRASHING);
+      if (totalGoals >= 5 && diff === 1) return pick(COMMENTARY_POOL.GOAL_FEST);
+      if (diff === 1) return pick(COMMENTARY_POOL.NARROW_WIN);
+      if (diff === 0 && totalGoals > 0) return pick(COMMENTARY_POOL.SCORING_DRAW);
+      if (totalGoals === 0) return pick(COMMENTARY_POOL.BORE_DRAW);
+      
+      return pick(COMMENTARY_POOL.GENERAL_WIN);
+  };
+
+  // 🔥 [Update] Win Rate Predictor (Default 50:50 when no data)
+  const getPrediction = (homeName: string, awayName: string) => {
+      const getTeamScore = (name: string) => {
+          if (name === 'TBD' || name === 'BYE') return 0;
+          // Current Season (Weight 70%)
+          const current = activeRankingData.teams.find(t => t.name === name);
+          const currentPts = current ? (current.points / (current.win + current.draw + current.loss || 1)) * 20 : 10; 
+          
+          // History (Weight 30%)
+          const hist = historyData.teams.find(t => t.name === name);
+          const histWinRate = hist ? (hist.win / (hist.win + hist.draw + hist.loss || 1)) * 100 : 30; // Default 30
+          
+          return (currentPts * 0.7) + (histWinRate * 0.3);
+      };
+
+      const hPower = getTeamScore(homeName);
+      const aPower = getTeamScore(awayName);
+      const total = hPower + aPower;
+
+      // If no data or 0 vs 0, return 50:50 to avoid 0%
+      if (total === 0) return { hRate: 50, aRate: 50 };
+
+      const hRate = Math.round((hPower / total) * 100);
+      const aRate = 100 - hRate;
+
+      return { hRate, aRate };
+  };
+
   const getTeamPlayers = (teamName: string) => {
     const players = new Set<string>();
     activeRankingData.players.forEach((p:any) => { if(p.team === teamName) players.add(p.name); });
     return Array.from(players);
   };
 
-  // 🔥 [Fix] Missing Admin Logic Handlers & Available Teams Logic
   const { availableTeams, assignmentRegions, clubLeagues, nationalLeagues } = useMemo(() => {
     const currentSeason = seasons.find(s => s.id === adminTab);
     const assignedTeamNames = (currentSeason?.teams || []).map(t => t.name);
@@ -379,36 +441,21 @@ export default function FootballLeagueApp() {
   };
 
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
-    // 🔥 [Logic] Smart Seeding for League (Owner Interleave)
     let shuffled: Team[] = [];
-    
     if (s.type === 'LEAGUE') {
         const teamsByOwner: { [key: string]: Team[] } = {};
-        teams.forEach(t => {
-            if(!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = [];
-            teamsByOwner[t.ownerName].push(t);
-        });
+        teams.forEach(t => { if(!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = []; teamsByOwner[t.ownerName].push(t); });
         const ownerNames = Object.keys(teamsByOwner).sort(() => Math.random() - 0.5);
-        let maxTeams = 0;
-        Object.values(teamsByOwner).forEach(arr => maxTeams = Math.max(maxTeams, arr.length));
-        
-        for(let i=0; i<maxTeams; i++) {
-            ownerNames.forEach(owner => {
-                if(teamsByOwner[owner][i]) shuffled.push(teamsByOwner[owner][i]);
-            });
-        }
+        let maxTeams = 0; Object.values(teamsByOwner).forEach(arr => maxTeams = Math.max(maxTeams, arr.length));
+        for(let i=0; i<maxTeams; i++) { ownerNames.forEach(owner => { if(teamsByOwner[owner][i]) shuffled.push(teamsByOwner[owner][i]); }); }
     } else {
         shuffled = [...teams].sort(() => Math.random() - 0.5);
     }
-
     const rounds: Round[] = [];
-    
     if(s.type === 'TOURNAMENT') {
         for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
         const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; 
-        
         let matches: Match[] = [];
-        
         for(let i=0; i<matchCount; i++) { const h = shuffled[i*2], a = shuffled[i*2+1]; const stageName = getTournamentStageName(nextPow2, matchCount);
            matches.push(a ? { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } : { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` });
         }
@@ -453,7 +500,6 @@ export default function FootballLeagueApp() {
                 const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` })); 
                 newRounds.push({round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` }); 
             }); 
-            // 🔥 [Fix] Define firstHalfLen
             const firstHalfLen = initialRoundsCount;
              newRounds.forEach((r, idx) => { r.name = `Round ${firstHalfLen + idx + 1}`; });
              rounds.push(...newRounds);
@@ -479,8 +525,6 @@ export default function FootballLeagueApp() {
         if (s.type === 'TOURNAMENT' && editingMatch.nextMatchId) {
             const hScore = Number(matchInputs.homeScore);
             const aScore = Number(matchInputs.awayScore);
-            
-            // 🔥 [Fix] Explicit Type for winningTeam
             let winningTeam: {name: string, logo: string, owner: string} | null = null;
             
             if (hScore > aScore) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
@@ -524,9 +568,7 @@ export default function FootballLeagueApp() {
   };
 
   const handleRecordRemove = (type: string, id: number) => { if(!editingMatch)return; const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; const item=list.find(r=>r.id===id); if(item){ if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Math.max(0,Number(p.homeScore)-item.count))})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Math.max(0,Number(p.awayScore)-item.count))})); } setEditingMatch({...editingMatch,[f]:list.filter(r=>r.id!==id)}); };
-  
-  // 🔥 [Fix] Added Safety Check for Banners Map
-  const renderBanners = () => (banners && banners.length > 0) ? banners.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % banners.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
+  const renderBanners = () => (sortedBannersDisplay && sortedBannersDisplay.length > 0) ? sortedBannersDisplay.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % sortedBannersDisplay.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
 
   const handleShareLink = () => { navigator.clipboard.writeText(window.location.href); alert("🔗 링크가 복사되었습니다!"); };
   const handleAdminLogin = () => { if(adminPwInput === '0705') { setAdminUnlocked(true); setAdminPwInput(''); } else { alert("비밀번호가 일치하지 않습니다."); } };
@@ -537,7 +579,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_FINAL_STABLE_v3</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_15_01_Graph_Upgrade</p>
         </div>
         <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">{currentTime}</div>
         <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
@@ -717,6 +759,54 @@ export default function FootballLeagueApp() {
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* 🔥 [Feature Update] Prediction Bar (Redesigned with Split Gradient) */}
+                                    {m.home !== 'TBD' && m.home !== 'BYE' && m.away !== 'TBD' && m.away !== 'BYE' && (
+                                        <div className="w-full mt-3 mb-2 px-1">
+                                            {/* Label */}
+                                            <div className="text-center text-[8px] text-slate-500 font-bold mb-1 tracking-widest uppercase">WIN RATE PREDICTION</div>
+                                            
+                                            <div className="flex items-center gap-2">
+                                                {/* Left Label */}
+                                                <span className="text-[10px] font-black text-emerald-400 w-8 text-right">{getPrediction(m.home, m.away).hRate}%</span>
+                                                
+                                                {/* Bar Container */}
+                                                <div className="relative flex-1 h-4 bg-slate-800 flex items-center justify-center overflow-hidden rounded-md border border-slate-700 shadow-inner">
+                                                    
+                                                    {/* Home Bar (Left Split) - Green Gradient */}
+                                                    <div 
+                                                        style={{ width: isLoaded ? `${getPrediction(m.home, m.away).hRate}%` : '0%' }} 
+                                                        className="h-full bg-gradient-to-r from-emerald-900 to-emerald-400 transition-all duration-1000 ease-out absolute left-0 top-0 skew-x-[-12deg] origin-bottom-left -ml-2 w-[calc(100%+8px)]"
+                                                    ></div>
+
+                                                    {/* Away Bar (Right Split) - Blue Gradient */}
+                                                    <div 
+                                                        style={{ width: isLoaded ? `${getPrediction(m.home, m.away).aRate}%` : '0%' }} 
+                                                        className="h-full bg-gradient-to-l from-blue-900 to-blue-400 transition-all duration-1000 ease-out absolute right-0 top-0 skew-x-[-12deg] origin-top-right -mr-2 w-[calc(100%+8px)]"
+                                                    ></div>
+                                                    
+                                                    {/* Center Flash Object (Lightning) */}
+                                                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20">
+                                                        <div className="w-5 h-5 bg-slate-900 border-2 border-slate-600 rounded-full flex items-center justify-center shadow-lg">
+                                                            <span className="text-[9px] text-yellow-400 font-bold animate-pulse">⚡</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Right Label */}
+                                                <span className="text-[10px] font-black text-blue-400 w-8 text-left">{getPrediction(m.home, m.away).aRate}%</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 🔥 [Feature] Commentary (Finished) */}
+                                    {m.status === 'FINISHED' && (
+                                        <div className="bg-slate-900/50 p-2 mt-2 rounded text-center border border-slate-800/50">
+                                            <p className="text-[10px] text-emerald-300 italic">
+                                                &quot; {getMatchCommentary(m)} &quot;
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -805,40 +895,20 @@ export default function FootballLeagueApp() {
                                 {historyData.players
                                     .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
                                     .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                                    .slice(0, 20).map((p:any,i:number)=>(
-                                  <tr key={i} className="border-b border-slate-800/50">
-                                      <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
-                                      <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                      <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
-                                      <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
-              )}
-
-              {rankingTab === 'HIGHLIGHTS' && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {activeRankingData.highlights.map((m, idx) => (
-                          <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
-                              <div className="relative aspect-video">
-                                  <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
-                                  <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
-                              </div>
-                              <div className="p-3 flex items-center gap-3">
-                                  <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
-                                  <div className="flex-1 min-w-0">
-                                      <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
-                                      <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
-                                  </div>
-                              </div>
-                          </div>
-                      ))}
-                      {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
-                  </div>
-              )}
-           </div>
+                                    .slice(0, 20).map((p:any, i:number) => (
+                                    <tr key={i} className="border-b border-slate-800/50">
+                                        <td className="p-3 text-center text-slate-600">{i+1}</td>
+                                        {/* 🔥 Updated: Player + Owner */}
+                                        <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
+                                        <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                        <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
         )}
 
         {/* VIEW 4: TUTORIAL */}
