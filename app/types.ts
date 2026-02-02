@@ -1,4 +1,3 @@
-// app/types.ts
 import React from 'react';
 
 // --- Interfaces ---

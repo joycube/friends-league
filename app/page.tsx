@@ -41,7 +41,7 @@ export default function FootballLeagueApp() {
   const [bannerIdx, setBannerIdx] = useState<number>(0); 
   const [isBannerInitialized, setIsBannerInitialized] = useState(false);
 
-  // Touch
+  // 🔥 [Fix] Restore Touch States
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
@@ -59,7 +59,7 @@ export default function FootballLeagueApp() {
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
 
-  // Admin Assignment States
+  // 🔥 [Fix] Admin Assignment States
   const [selOwnerId, setSelOwnerId] = useState<number | ''>('');
   const [assignCategory, setAssignCategory] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL'); 
   const [assignRegion, setAssignRegion] = useState<string>('ALL'); 
@@ -90,27 +90,32 @@ export default function FootballLeagueApp() {
     return () => clearInterval(t);
   }, []);
 
-  // Banner Logic
+  // 🔥 [Logic] Banner Logic Fix: Random Video First
   useEffect(() => {
     if (!banners || banners.length === 0) return;
 
+    // 1. Initial Load: Pick a random VIDEO first
     if (!isBannerInitialized) {
         const videoIndices = banners.map((b, i) => (b.url.includes('youtube') || b.url.includes('youtu.be')) ? i : -1).filter(i => i !== -1);
+        
         if (videoIndices.length > 0) {
+            // Pick ONE random video from the list
             const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
             setBannerIdx(randomVideoIdx);
         } else {
+            // If no videos, pick any random banner
             setBannerIdx(Math.floor(Math.random() * banners.length));
         }
         setIsBannerInitialized(true);
         return;
     }
 
+    // 2. Rotation Logic (Next Banner)
     const currentBanner = banners[bannerIdx];
     if (!currentBanner) return;
 
     const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
-    const delay = isVideo ? 15000 : 5000; 
+    const delay = isVideo ? 15000 : 5000; // 15s for video, 5s for image
 
     const t = setTimeout(() => {
         let nextIdx = Math.floor(Math.random() * banners.length);
@@ -183,6 +188,7 @@ export default function FootballLeagueApp() {
 
   const getPlayerKey = (name: string, team: string, owner: string) => `${name.trim()}-${team}-${owner}`;
 
+  // --- Ranking Data ---
   const activeRankingData = useMemo(() => {
     const targetSeason = seasons.find(s => s.id === viewSeasonId);
     if(!targetSeason?.teams) return { teams: [], owners: [], players: [], highlights: [] };
@@ -245,6 +251,7 @@ export default function FootballLeagueApp() {
     return { teams, owners: Array.from(ownerMap.values()).sort((a,b)=>b.points-a.points || b.prize-a.prize), players: Array.from(playerStatsMap.values()).sort((a:any,b:any) => b.goals - a.goals || b.assists - a.assists), highlights };
   }, [seasons, viewSeasonId]);
 
+  // --- History Data ---
   const historyData = useMemo(() => {
       const ownerHist = new Map<string, any>(); const teamHist = new Map<string, any>(); const playerHistMap = new Map<string, any>();
       seasons.forEach(s => {
@@ -303,6 +310,7 @@ export default function FootballLeagueApp() {
     return Array.from(players);
   };
 
+  // 🔥 [Fix] Missing Admin Logic Handlers & Available Teams Logic
   const { availableTeams, assignmentRegions, clubLeagues, nationalLeagues } = useMemo(() => {
     const currentSeason = seasons.find(s => s.id === adminTab);
     const assignedTeamNames = (currentSeason?.teams || []).map(t => t.name);
@@ -317,6 +325,23 @@ export default function FootballLeagueApp() {
     return { availableTeams: getSortedTeamsLogic(filtered, ''), assignmentRegions: getSortedLeagues(regions), clubLeagues: getSortedLeagues(cList), nationalLeagues: getSortedLeagues(nList) };
   }, [masterTeams, seasons, adminTab, assignCategory, assignRegion, assignTier, assignSearch, leagues]);
 
+  const handleFinishAssignment = async () => {
+      const s = seasons.find(s => s.id === adminTab); if(!s) return;
+      if((s.teams||[]).length < 2) return alert("최소 2팀 이상 배정해야 합니다.");
+      if(s.rounds && s.rounds.length > 0) { if(confirm("스케줄 페이지로 이동하시겠습니까?")) { setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } } 
+      else { if(confirm("팀 배정을 완료하고 대진표를 생성하여 스케줄로 이동하시겠습니까?")) { const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert("대진표 생성 완료! 스케줄 화면으로 이동합니다."); setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } }
+  };
+
+  const handleGenerateSchedule = async () => {
+    const s = seasons.find(s => s.id === adminTab);
+    if(!s || (s.teams||[]).length < 2) return alert("팀이 부족합니다 (최소 2팀)");
+    if(!confirm("기존 스케줄이 초기화되고 새로 생성됩니다. 진행하시겠습니까?")) return;
+    const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert(`스케줄 생성 완료!`);
+  };
+
+  const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
+
+  // Touch Handlers
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
   const handleTouchEnd = () => { 
@@ -354,21 +379,16 @@ export default function FootballLeagueApp() {
   };
 
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
-    // 🔥 [Fix] Smart Seeding for League (Owner Interleave)
+    // 🔥 [Logic] Smart Seeding for League (Owner Interleave)
     let shuffled: Team[] = [];
     
     if (s.type === 'LEAGUE') {
-        // Group teams by owner
         const teamsByOwner: { [key: string]: Team[] } = {};
         teams.forEach(t => {
             if(!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = [];
             teamsByOwner[t.ownerName].push(t);
         });
-        
-        // Shuffle owners order
         const ownerNames = Object.keys(teamsByOwner).sort(() => Math.random() - 0.5);
-        
-        // Interleave
         let maxTeams = 0;
         Object.values(teamsByOwner).forEach(arr => maxTeams = Math.max(maxTeams, arr.length));
         
@@ -378,7 +398,6 @@ export default function FootballLeagueApp() {
             });
         }
     } else {
-        // Tournament: Random Shuffle is fine (collision check exists)
         shuffled = [...teams].sort(() => Math.random() - 0.5);
     }
 
@@ -405,7 +424,6 @@ export default function FootballLeagueApp() {
             if(currentCount === 0.5) break; currentCount /= 2; rIdx++;
         }
     } else {
-        // League (Polygon Method)
         const dummyTeam = {id:0, seasonId:s.id, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0};
         if(shuffled.length % 2 !== 0) shuffled.push(dummyTeam as Team);
         const numTeams = shuffled.length; const numRounds = numTeams - 1; const half = numTeams / 2;
@@ -424,8 +442,6 @@ export default function FootballLeagueApp() {
                 } 
             } 
             rounds.push({round: r+1, matches: roundMatches, seasonId: s.id, name: `Round ${r+1}`});
-            
-            // Rotate for next round
             const first = teamsArr[0]; const rest = teamsArr.slice(1);
             teamsArr = [first, rest[rest.length - 1], ...rest.slice(0, rest.length - 1)];
         }
@@ -434,12 +450,11 @@ export default function FootballLeagueApp() {
             const initialRoundsCount = rounds.length; 
             const newRounds: Round[] = []; 
             rounds.forEach((r, idx) => { 
-                const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${firstHalfLen + idx + 1}` })); 
+                const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` })); 
                 newRounds.push({round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` }); 
             }); 
-            // 🔥 [Fix] Define firstHalfLen (it was missing variable error)
+            // 🔥 [Fix] Define firstHalfLen
             const firstHalfLen = initialRoundsCount;
-            // Re-map with correct stage name
              newRounds.forEach((r, idx) => { r.name = `Round ${firstHalfLen + idx + 1}`; });
              rounds.push(...newRounds);
         }
@@ -464,6 +479,7 @@ export default function FootballLeagueApp() {
         if (s.type === 'TOURNAMENT' && editingMatch.nextMatchId) {
             const hScore = Number(matchInputs.homeScore);
             const aScore = Number(matchInputs.awayScore);
+            
             // 🔥 [Fix] Explicit Type for winningTeam
             let winningTeam: {name: string, logo: string, owner: string} | null = null;
             
@@ -508,6 +524,8 @@ export default function FootballLeagueApp() {
   };
 
   const handleRecordRemove = (type: string, id: number) => { if(!editingMatch)return; const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; const item=list.find(r=>r.id===id); if(item){ if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Math.max(0,Number(p.homeScore)-item.count))})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Math.max(0,Number(p.awayScore)-item.count))})); } setEditingMatch({...editingMatch,[f]:list.filter(r=>r.id!==id)}); };
+  
+  // 🔥 [Fix] Added Safety Check for Banners Map
   const renderBanners = () => (banners && banners.length > 0) ? banners.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % banners.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
 
   const handleShareLink = () => { navigator.clipboard.writeText(window.location.href); alert("🔗 링크가 복사되었습니다!"); };
@@ -519,7 +537,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_FINAL_Logic_Upgrade</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_FINAL_STABLE_v3</p>
         </div>
         <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">{currentTime}</div>
         <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
@@ -778,7 +796,7 @@ export default function FootballLeagueApp() {
                 {historyTab === 'PLAYERS' && (
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                         <div className="flex bg-slate-950 border-b border-slate-800">
-                            <button onClick={()=>setHistPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
+                            <button onClick={()=>setHistPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
                             <button onClick={()=>setHistPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
                         </div>
                         <table className="w-full text-left text-xs uppercase">
@@ -787,20 +805,40 @@ export default function FootballLeagueApp() {
                                 {historyData.players
                                     .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
                                     .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                                    .slice(0, 20).map((p:any, i:number) => (
-                                    <tr key={i} className="border-b border-slate-800/50">
-                                        <td className="p-3 text-center text-slate-600">{i+1}</td>
-                                        {/* 🔥 Updated: Player + Owner */}
-                                        <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                        <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
-                                        <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+                                    .slice(0, 20).map((p:any,i:number)=>(
+                                  <tr key={i} className="border-b border-slate-800/50">
+                                      <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
+                                      <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
+                                      <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                      <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              )}
+
+              {rankingTab === 'HIGHLIGHTS' && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {activeRankingData.highlights.map((m, idx) => (
+                          <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
+                              <div className="relative aspect-video">
+                                  <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                                  <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
+                              </div>
+                              <div className="p-3 flex items-center gap-3">
+                                  <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
+                                  <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
+                                      <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                      {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
+                  </div>
+              )}
+           </div>
         )}
 
         {/* VIEW 4: TUTORIAL */}
