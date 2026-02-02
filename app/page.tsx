@@ -58,7 +58,7 @@ export default function FootballLeagueApp() {
   const [inputTotalPrize, setInputTotalPrize] = useState(100000);
   
   // Prize States
-  const [prizes, setPrizes] = useState({ first: 50000, second: 30000, third: 10000, scorer: 10000, assist: 0 });
+  const [prizes, setPrizes] = useState({ first: 45000, second: 25000, third: 10000, scorer: 10000, assist: 10000 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
   const [newOwnerName, setNewOwnerName] = useState('');
@@ -96,6 +96,14 @@ export default function FootballLeagueApp() {
     setTimeout(() => setIsLoaded(true), 500);
     return () => clearInterval(t);
   }, []);
+
+  // 🔥 [Fix 2] Reset Filters when Owner Changes
+  useEffect(() => {
+      setAssignCategory('ALL');
+      setAssignRegion('ALL');
+      setAssignTier('ALL');
+      setAssignSearch('');
+  }, [selOwnerId]);
 
   // Banner Logic
   useEffect(() => {
@@ -160,10 +168,16 @@ export default function FootballLeagueApp() {
       } else if (viewSeasonId === 0) setViewSeasonId(seasons[0].id);
   }, [seasons]); 
 
-  // Prize Logic
+  // 🔥 [Update 3] Prize Logic: Added Assist, 1st(45%), 2nd(25%), 3rd(10%), Scorer(10%), Assist(10%)
   useEffect(() => { 
     if (isAutoPrize) {
-      setPrizes({ first: Math.floor(inputTotalPrize * 0.5), second: Math.floor(inputTotalPrize * 0.3), third: Math.floor(inputTotalPrize * 0.1), scorer: Math.floor(inputTotalPrize * 0.1), assist: 0 }); 
+      setPrizes({ 
+        first: Math.floor(inputTotalPrize * 0.45), 
+        second: Math.floor(inputTotalPrize * 0.25), 
+        third: Math.floor(inputTotalPrize * 0.10), 
+        scorer: Math.floor(inputTotalPrize * 0.10), 
+        assist: Math.floor(inputTotalPrize * 0.10) 
+      }); 
     }
   }, [inputTotalPrize, isAutoPrize]);
 
@@ -411,7 +425,7 @@ export default function FootballLeagueApp() {
 
   const handleRecordInputChange = (type: string, field: string, value: string) => { setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } })); };
   
-  // 🔥 [Fix] Owner Name Cascade Update Logic
+  // Owner Name Cascade Update Logic
   const handleSaveOwner = async () => {
     if (newOwnerName) {
       if (editOwnerId) {
@@ -460,13 +474,11 @@ export default function FootballLeagueApp() {
       }
   };
 
-  // 🔥 [Core Logic] Advanced Schedule Generator
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
     let rounds: Round[] = [];
 
     // --- 1. LEAGUE LOGIC ---
     if (s.type === 'LEAGUE') {
-        // Group by Owner
         const teamsByOwner: Record<string, Team[]> = {};
         teams.forEach(t => {
             if (!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = [];
@@ -475,74 +487,45 @@ export default function FootballLeagueApp() {
         const ownerKeys = Object.keys(teamsByOwner);
         const maxTeamsPerOwner = Math.max(...Object.values(teamsByOwner).map(t => t.length));
         
-        // ✨ Condition for Smart Avoidance (Symmetric: Even Owners, Equal Teams)
+        // Smart Avoidance (Symmetric)
         const isSymmetric = ownerKeys.length % 2 === 0 && ownerKeys.every(o => teamsByOwner[o].length === maxTeamsPerOwner);
 
-        // [Option A] Smart Schedule (No Civil War)
         if (isSymmetric) {
             console.log("⚡ Generating Smart Avoidance Schedule...");
             const numOwners = ownerKeys.length;
             const teamsPerOwner = maxTeamsPerOwner;
-            // Round Robin for Owners (Polygon method for owners)
-            // Fix first owner, rotate others
-            const fixedOwner = ownerKeys[0];
-            const rotatingOwners = ownerKeys.slice(1);
-            const numOwnerRounds = numOwners - 1;
-
+            let currentOwnerList = [...ownerKeys]; 
             let roundCounter = 1;
 
-            for (let r = 0; r < numOwnerRounds; r++) {
-                // Owner Matchups for this round
-                const ownerMatches: [string, string][] = [];
-                // 1. Fixed vs Rotated[Last]
-                ownerMatches.push([fixedOwner, rotatingOwners[rotatingOwners.length - 1 - r]]);
-                
-                // 2. Pairs from the rest
-                for (let i = 0; i < (numOwners - 2) / 2; i++) {
-                    const o1 = rotatingOwners[i];
-                    const o2 = rotatingOwners[rotatingOwners.length - 2 - r - i]; // Adjust index logic for rotation
-                    // Simple Rotation Logic:
-                    // Indices in rotating array: 0, 1, 2...
-                    // Let's use standard indices for rotation
-                    // Current state of rotating array for round r:
-                    // shift r times? No, let's just use the standard algo.
-                }
-            }
-            
-            // Re-implement Simple Owner Rotation correctly
-            let currentOwnerList = [...ownerKeys]; // [A, B, C, D]
-            // We need N-1 rounds of owner matchups
-            
             for (let r = 0; r < numOwners - 1; r++) {
-                // Generate Team Matches for this Owner-Round
-                // We split this into 'teamsPerOwner' sub-rounds to distribute games
-                
                 const ownerPairs: [string, string][] = [];
                 for(let i=0; i<numOwners/2; i++) {
                     ownerPairs.push([currentOwnerList[i], currentOwnerList[numOwners-1-i]]);
                 }
 
-                // Create k Sub-Rounds (where k = teamsPerOwner)
-                // For each Sub-Round, we match teams from Owner A and Owner B
                 for (let sub = 0; sub < teamsPerOwner; sub++) {
                     let subRoundMatches: Match[] = [];
-                    
                     ownerPairs.forEach(pair => {
                         const ownerA = pair[0];
                         const ownerB = pair[1];
                         const teamsA = teamsByOwner[ownerA];
                         const teamsB = teamsByOwner[ownerB];
 
-                        // Create matches A[i] vs B[(i+sub)%k]
                         for (let t = 0; t < teamsPerOwner; t++) {
                             const team1 = teamsA[t];
                             const team2 = teamsB[(t + sub) % teamsPerOwner];
                             
+                            // 🔥 [Fix 1] Smart H/A Alternation Logic
+                            // Use (Round Index + Match Index) % 2 to alternate H/A
+                            const isHome = (r + sub + t) % 2 === 0;
+                            const h = isHome ? team1 : team2;
+                            const a = isHome ? team2 : team1;
+
                             subRoundMatches.push({
                                 id: `${s.id}_R${roundCounter}_M${subRoundMatches.length}`, seasonId: s.id,
-                                home: team1.name, away: team2.name,
-                                homeLogo: team1.logo, awayLogo: team2.logo,
-                                homeOwner: team1.ownerName, awayOwner: team2.ownerName,
+                                home: h.name, away: a.name,
+                                homeLogo: h.logo, awayLogo: a.logo,
+                                homeOwner: h.ownerName, awayOwner: a.ownerName,
                                 homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${roundCounter}`, matchLabel: `Match`
                             });
                         }
@@ -553,18 +536,15 @@ export default function FootballLeagueApp() {
                         roundCounter++;
                     }
                 }
-
-                // Rotate Owners (Keep [0] fixed, rotate [1...N-1])
                 const first = currentOwnerList[1];
                 const rest = currentOwnerList.slice(2);
                 currentOwnerList = [currentOwnerList[0], ...rest, first];
             }
 
         } else {
-            // [Option B] Standard Shuffle (Fallback)
+            // Standard Shuffle (Fallback)
             console.log("🎲 Generating Standard Schedule...");
             let shuffled: Team[] = [];
-            // Smart Seed for League
             const teamsByOwner: { [key: string]: Team[] } = {};
             teams.forEach(t => { if(!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = []; teamsByOwner[t.ownerName].push(t); });
             const ownerNames = Object.keys(teamsByOwner).sort(() => Math.random() - 0.5);
@@ -579,8 +559,14 @@ export default function FootballLeagueApp() {
             for(let r = 0; r < numRounds; r++) { 
                 let roundMatches: Match[] = []; 
                 for(let i=0; i<half; i++) { 
-                    const home = teamsArr[i]; 
-                    const away = teamsArr[numTeams - 1 - i]; 
+                    const t1 = teamsArr[i]; 
+                    const t2 = teamsArr[numTeams - 1 - i]; 
+                    
+                    // 🔥 [Fix 1] Standard H/A Alternation Logic (Checkerboard)
+                    let home, away;
+                    if ((r + i) % 2 === 0) { home = t1; away = t2; }
+                    else { home = t2; away = t1; }
+
                     if(home.name !== 'BYE' && away.name !== 'BYE') { 
                         roundMatches.push({
                             id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName,
@@ -594,7 +580,6 @@ export default function FootballLeagueApp() {
             }
         }
 
-        // Apply Double League if needed (Mirroring)
         if(s.leagueMode === 'DOUBLE') { 
             const initialRoundsCount = rounds.length; 
             const newRounds: Round[] = []; 
@@ -602,16 +587,15 @@ export default function FootballLeagueApp() {
                 const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` })); 
                 newRounds.push({round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` }); 
             }); 
-            // Fix rounds naming
-            newRounds.forEach((r, idx) => { r.name = `Round ${initialRoundsCount + idx + 1}`; });
-            rounds.push(...newRounds);
+            const firstHalfLen = initialRoundsCount;
+             newRounds.forEach((r, idx) => { r.name = `Round ${firstHalfLen + idx + 1}`; });
+             rounds.push(...newRounds);
         }
     } 
     
     // --- 2. TOURNAMENT LOGIC (Existing) ---
     else {
         let shuffled = [...teams].sort(() => Math.random() - 0.5);
-        // Avoid same owner in round 1
         for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
         const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; 
         let matches: Match[] = [];
@@ -637,6 +621,7 @@ export default function FootballLeagueApp() {
   const handleMatchClick = (m: Match) => { 
       setEditingMatch({...m}); 
       setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl});
+      // 🔥 [Fix 2] Reset inputs
       setRecordInputs({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
       setManualWinner(null);
   };
@@ -704,7 +689,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_15_02_Smart_Schedule</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_16_01_User_Feedback_Fix</p>
         </div>
         <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">{currentTime}</div>
         <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
@@ -742,7 +727,11 @@ export default function FootballLeagueApp() {
                           {activeRankingData.teams.map((t, i) => (
                               <tr key={t.id} className={`border-b border-slate-800/50 ${i<3 ? 'bg-emerald-900/10' : ''}`}>
                                   <td className={`p-4 text-center font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-orange-400':'text-slate-600'}`}>{i+1}</td>
-                                  <td className="p-4 flex items-center gap-3"><img src={t.logo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/><div className="flex flex-col"><span className="font-bold">{t.name}</span><span className="text-[9px] text-slate-500">{t.ownerName}</span></div></td>
+                                  <td className="p-4 flex items-center gap-3">
+                                      {/* 🔥 [Fix 4] Object-Contain for Logos */}
+                                      <img src={t.logo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
+                                      <div className="flex flex-col"><span className="font-bold">{t.name}</span><span className="text-[9px] text-slate-500">{t.ownerName}</span></div>
+                                  </td>
                                   <td className="p-4 text-center text-slate-400">{t.win}</td><td className="p-4 text-center text-slate-400">{t.draw}</td><td className="p-4 text-center text-slate-400">{t.loss}</td><td className="p-4 text-center text-slate-500">{t.gd>0?`+${t.gd}`:t.gd}</td>
                                   <td className="p-4 text-center text-emerald-400 font-bold text-sm">{t.points}</td>
                               </tr>
@@ -848,6 +837,7 @@ export default function FootballLeagueApp() {
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div className="flex flex-col items-center w-1/3 gap-1">
+                                            {/* 🔥 [Fix 4] Object-Contain */}
                                             <img src={m.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                                             <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{m.home}</span>
                                             {/* 🔥 [UI Fix] Owner Name */}
@@ -964,7 +954,10 @@ export default function FootballLeagueApp() {
                                 {historyData.teams.slice(0, 20).map((t, i) => (
                                     <tr key={i} className="border-b border-slate-800/50">
                                         <td className="p-4 text-center text-slate-600">{i+1}</td>
-                                        <td className="p-4 font-bold text-white flex items-center gap-2"><img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5" alt=""/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span></td>
+                                        <td className="p-4 font-bold text-white flex items-center gap-2">
+                                            {/* 🔥 [Fix 4] Object-Contain */}
+                                            <img src={t.logo} className="w-6 h-6 object-contain bg-white rounded-full p-0.5" alt=""/>{t.name} <span className="text-[9px] text-slate-500">({t.owner})</span>
+                                        </td>
                                         <td className="p-4 text-center text-slate-400">{t.win}W {t.draw}D {t.loss}L</td>
                                         <td className="p-4 text-right text-emerald-400 font-bold">{t.points}</td>
                                     </tr>
@@ -1025,7 +1018,10 @@ export default function FootballLeagueApp() {
                                         <td className="p-3 text-center text-slate-600">{i+1}</td>
                                         {/* 🔥 Updated: Player + Owner */}
                                         <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                        <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                        <td className="p-3 text-slate-400 flex items-center gap-2">
+                                            {/* 🔥 [Fix 4] Object-Contain */}
+                                            <img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span>
+                                        </td>
                                         <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
                                     </tr>
                                 ))}
@@ -1080,7 +1076,8 @@ export default function FootballLeagueApp() {
                         <div className="space-y-4">
                             <div className="space-y-1"><label className="text-xs text-slate-400 font-bold">1. Season Name</label><input value={inputSeasonName} onChange={e=>setInputSeasonName(e.target.value)} placeholder="예: 2026 Season 1" className="bg-slate-800 w-full p-4 rounded border border-slate-700 text-base"/></div>
                             <div className="space-y-1"><label className="text-xs text-slate-400 font-bold">2. Type & Mode</label><div className="flex gap-2"><select value={inputSeasonType} onChange={e=>setInputSeasonType(e.target.value as any)} className="bg-slate-800 p-4 rounded border border-slate-700 flex-1 h-14 text-base"><option value="LEAGUE">LEAGUE</option><option value="TOURNAMENT">TOURNAMENT</option></select>{inputSeasonType === 'LEAGUE' && <select value={inputLeagueMode} onChange={e=>setInputLeagueMode(e.target.value as any)} className="bg-slate-800 p-4 rounded border border-slate-700 flex-1 h-14 text-base"><option value="SINGLE">SINGLE</option><option value="DOUBLE">DOUBLE</option></select>}</div></div>
-                            {/* 🔥 [Fix] Manual Prize Input UI - Fixed Manual Toggle Bug */}
+                            
+                            {/* 🔥 [Update 3] Prize UI Improved */}
                             <div className="space-y-2">
                                 <label className="text-xs text-slate-400 font-bold flex justify-between items-center">
                                     3. Prizes (상금 설정)
@@ -1090,19 +1087,28 @@ export default function FootballLeagueApp() {
                                     <>
                                         <input type="number" value={inputTotalPrize} onChange={e=>setInputTotalPrize(Number(e.target.value))} className="bg-slate-800 w-full p-4 rounded border border-slate-700 text-right text-lg font-bold text-emerald-400 mb-2 text-base" placeholder="Total Prize"/>
                                         <div className="grid grid-cols-2 gap-2 text-xs">
-                                            <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥇 1st (50%)</span><span>{prizes.first.toLocaleString()}</span></div>
-                                            <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥈 2nd (30%)</span><span>{prizes.second.toLocaleString()}</span></div>
-                                            <div className="bg-slate-950 p-2 rounded flex justify-between"><span>🥉 3rd (10%)</span><span>{prizes.third.toLocaleString()}</span></div>
-                                            <div className="bg-slate-950 p-2 rounded flex justify-between"><span>👟 Scorer (10%)</span><span>{prizes.scorer.toLocaleString()}</span></div>
+                                            <div className="bg-slate-950 p-2 rounded flex justify-between border border-slate-800"><span>🥇 1st (45%)</span><span className="text-emerald-400">{prizes.first.toLocaleString()}</span></div>
+                                            <div className="bg-slate-950 p-2 rounded flex justify-between border border-slate-800"><span>🥈 2nd (25%)</span><span>{prizes.second.toLocaleString()}</span></div>
+                                            <div className="bg-slate-950 p-2 rounded flex justify-between border border-slate-800"><span>🥉 3rd (10%)</span><span>{prizes.third.toLocaleString()}</span></div>
+                                            <div className="col-span-2 grid grid-cols-2 gap-2">
+                                                <div className="bg-slate-950 p-2 rounded flex justify-between border border-slate-800"><span>👟 Scorer (10%)</span><span>{prizes.scorer.toLocaleString()}</span></div>
+                                                <div className="bg-slate-950 p-2 rounded flex justify-between border border-slate-800"><span>🅰️ Assist (10%)</span><span>{prizes.assist.toLocaleString()}</span></div>
+                                            </div>
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div><label className="text-[10px] text-slate-500">🥇 1st</label><input type="number" value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
-                                        <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
-                                        <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
-                                        <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
-                                        <div className="col-span-2"><label className="text-[10px] text-slate-500">🅰️ Assist (Optional)</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">🏆 TEAM PRIZES</p>
+                                            <div><label className="text-[10px] text-slate-500">🥇 1st</label><input type="number" value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                            <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                            <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">👤 PLAYER PRIZES</p>
+                                            <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                            <div><label className="text-[10px] text-slate-500">🅰️ Assist</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-800 w-full p-2 rounded border border-slate-700 text-right text-sm"/></div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1136,7 +1142,7 @@ export default function FootballLeagueApp() {
                                 </div>
                             ) : (
                                 <div>
-                                    <div className="grid grid-cols-4 md:grid-cols-6 gap-3">{availableTeams.map(t => (<div key={t.id} onClick={() => handleQuickAssign(t)} className="relative aspect-square bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-900/20 transition-all active:scale-95 group"><img src={t.logo} className={`w-10 h-10 shadow-md ${t.category==='NATIONAL'?'rounded-full object-cover':'object-contain'}`} onError={(e:any)=>e.target.src=FALLBACK_IMG} alt="" /><div className="absolute bottom-1 w-full text-center px-1"><p className="text-[9px] truncate text-slate-400 group-hover:text-white font-bold">{t.name}</p></div><span className={`absolute top-1 right-1 text-[8px] px-1 rounded ${getTierBadgeColor(t.tier || 'C')}`}>{t.tier || 'C'}</span></div>))}</div>
+                                    <div className="grid grid-cols-4 md:grid-cols-6 gap-3">{availableTeams.map(t => (<div key={t.id} onClick={() => handleQuickAssign(t)} className="relative aspect-square bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-900/20 transition-all active:scale-95 group"><img src={t.logo} className={`w-10 h-10 shadow-md ${t.category==='NATIONAL'?'rounded-full object-contain':'object-contain'}`} onError={(e:any)=>e.target.src=FALLBACK_IMG} alt="" /><div className="absolute bottom-1 w-full text-center px-1"><p className="text-[9px] truncate text-slate-400 group-hover:text-white font-bold">{t.name}</p></div><span className={`absolute top-1 right-1 text-[8px] px-1 rounded ${getTierBadgeColor(t.tier || 'C')}`}>{t.tier || 'C'}</span></div>))}</div>
                                     <button onClick={() => {setAssignRegion('ALL'); setAssignSearch('');}} className="w-full mt-6 py-3 bg-slate-800 text-slate-400 text-xs rounded-xl hover:bg-slate-700">← 리그 목록으로 돌아가기</button>
                                 </div>
                             )}
