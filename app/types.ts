@@ -17,7 +17,6 @@ export interface Match {
   homeOwner: string; awayOwner: string; homeScore: string; awayScore: string;
   homeScorers: MatchRecord[]; awayScorers: MatchRecord[]; homeAssists: MatchRecord[]; awayAssists: MatchRecord[];
   status: 'UPCOMING' | 'FINISHED' | 'BYE'; youtubeUrl: string; stage?: string; matchLabel?: string; 
-  // 🔥 [Fix] Allow null for nextMatchId to satisfy Firestore & TypeScript
   nextMatchId?: string | null;
 }
 export interface Round { round: number; matches: Match[]; seasonId: number; name?: string; }

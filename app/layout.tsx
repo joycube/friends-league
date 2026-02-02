@@ -1,8 +1,7 @@
-import React from "react"; // 🔥 [Fix] Added React import
+import React from "react";
 import type { Metadata } from "next";
 import "./globals.css";
 
-// 🔥 [Meta] Social Image & Favicon & Viewport Setup
 export const metadata: Metadata = {
   title: "eFootball™ Live evolution™",
   description: "Join the League! eFootball Super League Management System.",
@@ -38,9 +37,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="ko">
       <body className="antialiased bg-[#020617] text-white">

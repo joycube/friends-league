@@ -27,7 +27,6 @@ export default function FootballLeagueApp() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState('');
 
-  // 🔥 [New] Real-time Clock
   const [currentTime, setCurrentTime] = useState<string>('');
 
   // Data State
@@ -39,10 +38,10 @@ export default function FootballLeagueApp() {
   
   // 🔥 Banner State
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [bannerIdx, setBannerIdx] = useState<number>(-1); 
+  const [bannerIdx, setBannerIdx] = useState<number>(0); 
   const [isBannerInitialized, setIsBannerInitialized] = useState(false);
 
-  // Touch
+  // 🔥 [Fix] Restore Touch States
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
@@ -60,6 +59,7 @@ export default function FootballLeagueApp() {
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
 
+  // 🔥 [Fix] Admin Assignment States
   const [selOwnerId, setSelOwnerId] = useState<number | ''>('');
   const [assignCategory, setAssignCategory] = useState<'CLUB' | 'NATIONAL' | 'ALL'>('ALL'); 
   const [assignRegion, setAssignRegion] = useState<string>('ALL'); 
@@ -69,9 +69,11 @@ export default function FootballLeagueApp() {
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [matchInputs, setMatchInputs] = useState({ homeScore:'', awayScore:'', youtube:'' });
   const [recordInputs, setRecordInputs] = useState({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
+  
+  // Tournament Draw Winner State
+  const [manualWinner, setManualWinner] = useState<'HOME' | 'AWAY' | null>(null);
 
   // --- Effects ---
-  // 🔥 [Logic] Time Ticker (YY.MM.DD HH:mm:ss)
   useEffect(() => {
     const updateTime = () => {
         const now = new Date();
@@ -88,21 +90,18 @@ export default function FootballLeagueApp() {
     return () => clearInterval(t);
   }, []);
 
-  // 🔥 [Logic] Banner Logic (Random Video First -> Random All)
+  // 🔥 [Logic] Banner Logic Fix: Random Video First
   useEffect(() => {
     if (!banners || banners.length === 0) return;
 
     // 1. Initial Load: Pick a random VIDEO first
     if (!isBannerInitialized) {
-        // Find indices of all videos
         const videoIndices = banners.map((b, i) => (b.url.includes('youtube') || b.url.includes('youtu.be')) ? i : -1).filter(i => i !== -1);
         
         if (videoIndices.length > 0) {
-            // Pick ONE random video from the list
             const randomVideoIdx = videoIndices[Math.floor(Math.random() * videoIndices.length)];
             setBannerIdx(randomVideoIdx);
         } else {
-            // If no videos, pick any random banner
             setBannerIdx(Math.floor(Math.random() * banners.length));
         }
         setIsBannerInitialized(true);
@@ -114,13 +113,10 @@ export default function FootballLeagueApp() {
     if (!currentBanner) return;
 
     const isVideo = currentBanner.url.includes('youtube') || currentBanner.url.includes('youtu.be');
-    const delay = isVideo ? 15000 : 5000; // 15s for video, 5s for image
+    const delay = isVideo ? 15000 : 5000; 
 
     const t = setTimeout(() => {
-        // Pick NEXT random index from ALL banners
         let nextIdx = Math.floor(Math.random() * banners.length);
-        
-        // Optional: Try to avoid repeating the exact same banner immediately if there are others
         if (banners.length > 1 && nextIdx === bannerIdx) {
             nextIdx = (nextIdx + 1) % banners.length;
         }
@@ -130,7 +126,7 @@ export default function FootballLeagueApp() {
     return () => clearTimeout(t);
   }, [banners, bannerIdx, isBannerInitialized]);
 
-  // 🔥 [Logic] Deep Linking
+  // Deep Linking
   useEffect(() => {
       if (viewSeasonId > 0) {
           const params = new URLSearchParams(window.location.search);
@@ -140,32 +136,24 @@ export default function FootballLeagueApp() {
       }
   }, [currentView, viewSeasonId]);
 
-  // 🔥 [Logic] Initial Load
+  // Initial Load
   useEffect(() => {
       if (seasons.length === 0) return; 
-
       const params = new URLSearchParams(window.location.search);
       const paramView = params.get('view');
       const paramSeasonId = Number(params.get('season'));
-
-      if (paramView && ['RANKING', 'SCHEDULE', 'HISTORY', 'TUTORIAL', 'ADMIN'].includes(paramView)) {
-          setCurrentView(paramView as any);
-      }
-
+      if (paramView && ['RANKING', 'SCHEDULE', 'HISTORY', 'TUTORIAL', 'ADMIN'].includes(paramView)) setCurrentView(paramView as any);
       if (paramSeasonId) {
           const targetSeason = seasons.find(s => s.id === paramSeasonId);
-          if (targetSeason) {
-              setViewSeasonId(targetSeason.id);
-          } else {
+          if (targetSeason) setViewSeasonId(targetSeason.id);
+          else {
               alert("현재 해당 시즌을 찾을 수가 없습니다. 메인 페이지로 이동합니다.");
               setViewSeasonId(seasons[0].id);
               const newParams = new URLSearchParams(window.location.search);
               newParams.delete('season');
               window.history.replaceState(null, '', `?${newParams.toString()}`);
           }
-      } else if (viewSeasonId === 0) {
-          setViewSeasonId(seasons[0].id);
-      }
+      } else if (viewSeasonId === 0) setViewSeasonId(seasons[0].id);
   }, [seasons]); 
 
   // Prize Logic
@@ -184,9 +172,7 @@ export default function FootballLeagueApp() {
   useEffect(() => {
     const u1 = onSnapshot(query(collection(db, "users"), orderBy("id", "asc")), s => setOwners(s.docs.map(d => ({...d.data(), docId: d.id} as Owner))));
     const u2 = onSnapshot(collection(db, "master_teams"), s => setMasterTeams(s.docs.map(d => ({id:d.id, ...d.data()} as MasterTeam))));
-    const u3 = onSnapshot(query(collection(db, "seasons"), orderBy("id", "desc")), s => { 
-        const d = s.docs.map(doc => doc.data() as Season); setSeasons(d); 
-    });
+    const u3 = onSnapshot(query(collection(db, "seasons"), orderBy("id", "desc")), s => { const d = s.docs.map(doc => doc.data() as Season); setSeasons(d); });
     const u4 = onSnapshot(collection(db, "banners"), s => setBanners(s.docs.map(d => ({id:d.id, ...d.data()} as Banner))));
     const u5 = onSnapshot(collection(db, "leagues"), s => setLeagues(s.docs.map(d => ({id:d.id, ...d.data()} as League))));
     return () => { u1(); u2(); u3(); u4(); u5(); };
@@ -302,8 +288,12 @@ export default function FootballLeagueApp() {
               if(!ownerHist.has(t.ownerName)) ownerHist.set(t.ownerName, {name:t.ownerName, win:0, draw:0, loss:0, points:0, prize:0, golds:0, silvers:0, bronzes:0});
               const o = ownerHist.get(t.ownerName);
               o.win += t.win; o.draw += t.draw; o.loss += t.loss; o.points += t.points;
+              
+              const pFirst = s.prizes?.first || 0;
+              const pSecond = s.prizes?.second || 0;
+              const pThird = s.prizes?.third || 0;
               if (played > 0) {
-                  if(idx===0) { o.golds++; o.prize+=s.prizes.first; } else if(idx===1) { o.silvers++; o.prize+=s.prizes.second; } else if(idx===2) { o.bronzes++; o.prize+=s.prizes.third; }
+                  if(idx===0) { o.golds++; o.prize+=pFirst; } else if(idx===1) { o.silvers++; o.prize+=pSecond; } else if(idx===2) { o.bronzes++; o.prize+=pThird; }
               }
               if(!teamHist.has(t.name)) teamHist.set(t.name, {name:t.name, logo:t.logo, owner:t.ownerName, win:0, draw:0, loss:0, points:0});
               const tm = teamHist.get(t.name); tm.win+=t.win; tm.draw+=t.draw; tm.loss+=t.loss; tm.points+=t.points;
@@ -318,6 +308,7 @@ export default function FootballLeagueApp() {
     return Array.from(players);
   };
 
+  // 🔥 [Fix] Missing Admin Logic Handlers & Available Teams Logic
   const { availableTeams, assignmentRegions, clubLeagues, nationalLeagues } = useMemo(() => {
     const currentSeason = seasons.find(s => s.id === adminTab);
     const assignedTeamNames = (currentSeason?.teams || []).map(t => t.name);
@@ -332,15 +323,37 @@ export default function FootballLeagueApp() {
     return { availableTeams: getSortedTeamsLogic(filtered, ''), assignmentRegions: getSortedLeagues(regions), clubLeagues: getSortedLeagues(cList), nationalLeagues: getSortedLeagues(nList) };
   }, [masterTeams, seasons, adminTab, assignCategory, assignRegion, assignTier, assignSearch, leagues]);
 
+  const handleFinishAssignment = async () => {
+      const s = seasons.find(s => s.id === adminTab); if(!s) return;
+      if((s.teams||[]).length < 2) return alert("최소 2팀 이상 배정해야 합니다.");
+      if(s.rounds && s.rounds.length > 0) { if(confirm("스케줄 페이지로 이동하시겠습니까?")) { setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } } 
+      else { if(confirm("팀 배정을 완료하고 대진표를 생성하여 스케줄로 이동하시겠습니까?")) { const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert("대진표 생성 완료! 스케줄 화면으로 이동합니다."); setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } }
+  };
+
+  const handleGenerateSchedule = async () => {
+    const s = seasons.find(s => s.id === adminTab);
+    if(!s || (s.teams||[]).length < 2) return alert("팀이 부족합니다 (최소 2팀)");
+    if(!confirm("기존 스케줄이 초기화되고 새로 생성됩니다. 진행하시겠습니까?")) return;
+    const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert(`스케줄 생성 완료!`);
+  };
+
+  const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
+
+  // Touch Handlers
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
-  const handleTouchEnd = () => { if (!touchStart || !touchEnd) return; const dist = touchStart - touchEnd; if (dist > 50) setBannerIdx((p) => (p + 1) % banners.length); if (dist < -50) setBannerIdx((p) => (p - 1 + banners.length) % banners.length); setTouchStart(0); setTouchEnd(0); };
+  const handleTouchEnd = () => { 
+    if (!touchStart || !touchEnd) return; 
+    const dist = touchStart - touchEnd; 
+    if (dist > 50) setBannerIdx((p) => (p + 1) % banners.length); 
+    if (dist < -50) setBannerIdx((p) => (p - 1 + banners.length) % banners.length); 
+    setTouchStart(0); setTouchEnd(0); 
+  };
 
   const handleRecordInputChange = (type: string, field: string, value: string) => { setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } })); };
   const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
   const handleEditOwnerClick = (o: Owner) => { setEditOwnerId(o.docId!); setNewOwnerName(o.nickname); setNewOwnerPhoto(o.photo); };
   const handleCreateSeason = async () => { if(inputSeasonName) { const id=Date.now(); await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); alert("게임 생성 완료! 팀을 배정해주세요."); } else { alert("시즌 이름 입력 필요"); } };
-  const handleDeleteBanner = async (id:string) => { if(confirm("배너 삭제?")) await deleteDoc(doc(db,"banners",id)); };
   
   const handleQuickAssign = async (team: MasterTeam) => {
       if(!selOwnerId) return alert("먼저 팀을 배정받을 오너를 선택해주세요! 👆");
@@ -367,7 +380,11 @@ export default function FootballLeagueApp() {
     const rounds: Round[] = [];
     if(s.type === 'TOURNAMENT') {
         for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
-        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; let matches: Match[] = [];
+        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; 
+        
+        // 🔥 [Fix] Explicit Type
+        let matches: Match[] = [];
+        
         for(let i=0; i<matchCount; i++) { const h = shuffled[i*2], a = shuffled[i*2+1]; const stageName = getTournamentStageName(nextPow2, matchCount);
            matches.push(a ? { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: a.name, homeLogo: h.logo, awayLogo: a.logo, homeOwner: h.ownerName, awayOwner: a.ownerName, homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` } : { id: `${s.id}_R1_M${i}`, seasonId: s.id, home: h.name, away: 'BYE (부전승)', homeLogo: h.logo, awayLogo: FALLBACK_IMG, homeOwner: h.ownerName, awayOwner: '-', homeScore: '1', awayScore: '0', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'BYE', youtubeUrl: '', stage: stageName, matchLabel: `Match ${i+1}`, nextMatchId: `${s.id}_R2_M${Math.floor(i/2)}` });
         }
@@ -405,32 +422,47 @@ export default function FootballLeagueApp() {
     return rounds;
   };
 
-  const handleFinishAssignment = async () => {
-      const s = seasons.find(s => s.id === adminTab); if(!s) return;
-      if((s.teams||[]).length < 2) return alert("최소 2팀 이상 배정해야 합니다.");
-      if(s.rounds && s.rounds.length > 0) { if(confirm("스케줄 페이지로 이동하시겠습니까?")) { setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } } 
-      else { if(confirm("팀 배정을 완료하고 대진표를 생성하여 스케줄로 이동하시겠습니까?")) { const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert("대진표 생성 완료! 스케줄 화면으로 이동합니다."); setCurrentView('SCHEDULE'); setViewSeasonId(s.id); } }
-  };
-
-  const handleGenerateSchedule = async () => {
-    const s = seasons.find(s => s.id === adminTab);
-    if(!s || (s.teams||[]).length < 2) return alert("팀이 부족합니다 (최소 2팀)");
-    if(!confirm("기존 스케줄이 초기화되고 새로 생성됩니다. 진행하시겠습니까?")) return;
-    const rounds = generateRoundsLogic(s, s.teams || []); await updateDoc(doc(db, "seasons", String(adminTab)), { rounds }); alert(`스케줄 생성 완료!`);
-  };
-
   const handleRemoveTeamFromSeason = async (tid:number) => { if(confirm("제외하시겠습니까?")) await updateDoc(doc(db,"seasons",String(adminTab)), {teams:seasons.find(s=>s.id===adminTab)?.teams?.filter(t=>t.id!==tid)}); };
   const handleMatchClick = (m: Match) => { 
       setEditingMatch({...m}); 
       setMatchInputs({homeScore:m.homeScore||'0',awayScore:m.awayScore||'0',youtube:m.youtubeUrl});
       setRecordInputs({ homeScorer:{name:'',count:'1'}, awayScorer:{name:'',count:'1'}, homeAssist:{name:'',count:'1'}, awayAssist:{name:'',count:'1'} });
+      setManualWinner(null);
   };
   
   const saveMatchResult = async () => {
     if(!editingMatch) return; const s = seasons.find(se => se.id === editingMatch.seasonId);
-    if(s && s.rounds) { let newRounds = [...s.rounds]; newRounds = newRounds.map(r => ({ ...r, matches: r.matches.map(m => m.id === editingMatch.id ? { ...editingMatch, homeScore: matchInputs.homeScore, awayScore: matchInputs.awayScore, youtubeUrl: matchInputs.youtube, status: 'FINISHED' as const } : m) }));
-       if (s.type === 'TOURNAMENT' && editingMatch.nextMatchId) { const winner = Number(matchInputs.homeScore) > Number(matchInputs.awayScore) ? {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner} : {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner}; newRounds = newRounds.map(r => ({ ...r, matches: r.matches.map(m => { if(m.id === editingMatch.nextMatchId) { const isHomeSlot = Number(editingMatch.id.split('_M')[1]) % 2 === 0; return isHomeSlot ? { ...m, home: winner.name, homeLogo: winner.logo, homeOwner: winner.owner } : { ...m, away: winner.name, awayLogo: winner.logo, awayOwner: winner.owner }; } return m; }) })); }
-       await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds }); setEditingMatch(null);
+    if(s && s.rounds) { 
+        let newRounds = [...s.rounds];
+        newRounds = newRounds.map(r => ({ ...r, matches: r.matches.map(m => m.id === editingMatch.id ? { ...editingMatch, homeScore: matchInputs.homeScore, awayScore: matchInputs.awayScore, youtubeUrl: matchInputs.youtube, status: 'FINISHED' as const } : m) }));
+
+        if (s.type === 'TOURNAMENT' && editingMatch.nextMatchId) {
+            const hScore = Number(matchInputs.homeScore);
+            const aScore = Number(matchInputs.awayScore);
+            // 🔥 [Fix] Explicit Type for winningTeam
+            let winningTeam: {name: string, logo: string, owner: string} | null = null;
+            
+            if (hScore > aScore) winningTeam = {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner};
+            else if (aScore > hScore) winningTeam = {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+            else if (hScore === aScore && manualWinner) {
+                winningTeam = manualWinner === 'HOME' ? {name: editingMatch.home, logo: editingMatch.homeLogo, owner: editingMatch.homeOwner} : {name: editingMatch.away, logo: editingMatch.awayLogo, owner: editingMatch.awayOwner};
+            } else if (hScore === aScore && !manualWinner) {
+                return alert("⚠️ 무승부입니다! 승부차기 승리팀을 선택해주세요.");
+            }
+
+            if (winningTeam) {
+                newRounds = newRounds.map(r => ({ ...r, matches: r.matches.map(m => { 
+                        if(m.id === editingMatch.nextMatchId) { 
+                            const isHomeSlot = Number(editingMatch.id.split('_M')[1]) % 2 === 0; 
+                            return isHomeSlot ? { ...m, home: winningTeam!.name, homeLogo: winningTeam!.logo, homeOwner: winningTeam!.owner } : { ...m, away: winningTeam!.name, awayLogo: winningTeam!.logo, awayOwner: winningTeam!.owner }; 
+                        } 
+                        return m; 
+                    }) 
+                }));
+            }
+        }
+        await updateDoc(doc(db, "seasons", String(s.id)), { rounds: newRounds }); 
+        setEditingMatch(null);
     }
   };
   
@@ -438,7 +470,7 @@ export default function FootballLeagueApp() {
       if(!editingMatch)return; 
       const k = type as keyof typeof recordInputs; 
       const count = Number(recordInputs[k].count);
-      const name = recordInputs[k].name.trim(); // 🔥 Auto Trim
+      const name = recordInputs[k].name.trim();
       if(!name) return alert("선수 이름을 입력하세요");
 
       if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Number(p.homeScore)+count)})); 
@@ -451,9 +483,6 @@ export default function FootballLeagueApp() {
   };
 
   const handleRecordRemove = (type: string, id: number) => { if(!editingMatch)return; const f=type+'s' as keyof Match; const list=(editingMatch[f] as MatchRecord[])||[]; const item=list.find(r=>r.id===id); if(item){ if(type==='homeScorer') setMatchInputs(p=>({...p,homeScore:String(Math.max(0,Number(p.homeScore)-item.count))})); if(type==='awayScorer') setMatchInputs(p=>({...p,awayScore:String(Math.max(0,Number(p.awayScore)-item.count))})); } setEditingMatch({...editingMatch,[f]:list.filter(r=>r.id!==id)}); };
-  const handleDeleteSeason = async () => { if(confirm("⚠️ 경고: 게임 삭제 시 모든 데이터 영구 삭제. 진행합니까?")) { await deleteDoc(doc(db,"seasons",String(adminTab))); setAdminTab('NEW'); setViewSeasonId(0); } };
-  
-  // 🔥 [Fix] Added Safety Check for Banners Map
   const renderBanners = () => (banners && banners.length > 0) ? banners.map((b, i) => (<div key={b.id || i} className={`absolute inset-0 transition-opacity duration-1000 ${i === (bannerIdx % banners.length) ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>{getBannerContent(b)}</div>)) : null;
 
   const handleShareLink = () => { navigator.clipboard.writeText(window.location.href); alert("🔗 링크가 복사되었습니다!"); };
@@ -464,16 +493,10 @@ export default function FootballLeagueApp() {
       <div className="w-full h-[225px] md:h-[330px] relative border-b border-slate-800 shadow-2xl overflow-hidden bg-black" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
-          {/* 🔥 [Fix] Updated Header Title & Layout */}
           <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
-          <p className="text-emerald-400 text-[10px] font-sans not-italic tracking-widest mt-1 opacity-80">ver. P_12_01_Banner_UI_Complete</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_FINAL_STABLE_v3</p>
         </div>
-        
-        {/* 🔥 [Feature] Real-time Clock */}
-        <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">
-            {currentTime}
-        </div>
-
+        <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">{currentTime}</div>
         <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
       </div>
       
@@ -730,7 +753,7 @@ export default function FootballLeagueApp() {
                 {historyTab === 'PLAYERS' && (
                     <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                         <div className="flex bg-slate-950 border-b border-slate-800">
-                            <button onClick={()=>setHistPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
+                            <button onClick={()=>setHistPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
                             <button onClick={()=>setHistPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${histPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
                         </div>
                         <table className="w-full text-left text-xs uppercase">
@@ -739,20 +762,40 @@ export default function FootballLeagueApp() {
                                 {historyData.players
                                     .filter((p:any) => histPlayerMode === 'GOAL' ? p.goals > 0 : p.assists > 0)
                                     .sort((a:any,b:any) => histPlayerMode === 'GOAL' ? b.goals - a.goals : b.assists - a.assists)
-                                    .slice(0, 20).map((p:any, i:number) => (
-                                    <tr key={i} className="border-b border-slate-800/50">
-                                        <td className="p-3 text-center text-slate-600">{i+1}</td>
-                                        {/* 🔥 Updated: Player + Owner */}
-                                        <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
-                                        <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
-                                        <td className={`p-3 text-right font-bold ${histPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{histPlayerMode==='GOAL'?p.goals:p.assists}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+                                    .slice(0, 20).map((p:any,i:number)=>(
+                                  <tr key={i} className="border-b border-slate-800/50">
+                                      <td className={`p-3 text-center ${i<3?'text-emerald-400 font-bold':'text-slate-600'}`}>{i+1}</td>
+                                      <td className="p-3 font-bold text-white">{p.name} <span className="text-[9px] text-slate-500 font-normal ml-1">({p.owner})</span></td>
+                                      <td className="p-3 text-slate-400 flex items-center gap-2"><img src={p.teamLogo} className="w-5 h-5 object-contain rounded-full bg-white p-0.5" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} /><span>{p.team}</span></td>
+                                      <td className={`p-3 text-right font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400':'text-blue-400'}`}>{rankPlayerMode==='GOAL'?p.goals:p.assists}</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              )}
+
+              {rankingTab === 'HIGHLIGHTS' && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {activeRankingData.highlights.map((m, idx) => (
+                          <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
+                              <div className="relative aspect-video">
+                                  <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                                  <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
+                              </div>
+                              <div className="p-3 flex items-center gap-3">
+                                  <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
+                                  <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
+                                      <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                      {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
+                  </div>
+              )}
+           </div>
         )}
 
         {/* VIEW 4: TUTORIAL */}
@@ -877,7 +920,7 @@ export default function FootballLeagueApp() {
         )}
       </main>
 
-      {/* 🔥 [Updated] Footer */}
+      {/* 🔥 [Fix] Restored Footer */}
       <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
           <p className="text-slate-500 text-xs mb-1 font-bold">게임은 eFootball 2025 기반으로 게임을 진행 합니다.</p>
           <p className="text-slate-500 text-xs mb-4">게임 참여 문의 : joycbue@gmail.com</p>
@@ -927,6 +970,18 @@ export default function FootballLeagueApp() {
                           <span className="text-slate-600 text-2xl">:</span>
                           <input type="number" value={matchInputs.awayScore} onChange={e=>setMatchInputs({...matchInputs, awayScore:e.target.value})} className="w-20 h-20 text-center text-4xl font-black bg-black rounded-2xl border border-slate-700 text-white focus:border-emerald-500 outline-none" />
                       </div>
+                      
+                      {/* 🔥 [Fix] Tournament Tie-Breaker UI */}
+                      {seasons.find(s=>s.id===editingMatch.seasonId)?.type === 'TOURNAMENT' && Number(matchInputs.homeScore) === Number(matchInputs.awayScore) && matchInputs.homeScore !== '' && (
+                          <div className="bg-red-900/50 p-2 rounded-xl border border-red-500 text-center animate-pulse">
+                              <p className="text-[10px] text-red-200 font-bold mb-1">⚠️ 동점: 다음 라운드 진출 팀 선택</p>
+                              <div className="flex gap-2">
+                                  <button onClick={()=>setManualWinner('HOME')} className={`px-2 py-1 text-xs rounded border ${manualWinner==='HOME'?'bg-red-600 text-white border-red-400':'bg-black text-red-400 border-red-800'}`}>Home 승</button>
+                                  <button onClick={()=>setManualWinner('AWAY')} className={`px-2 py-1 text-xs rounded border ${manualWinner==='AWAY'?'bg-red-600 text-white border-red-400':'bg-black text-red-400 border-red-800'}`}>Away 승</button>
+                              </div>
+                          </div>
+                      )}
+
                       <div className="w-full">
                           <label className="text-xs text-slate-500 mb-1 block text-center">YouTube Highlights URL</label>
                           <input value={matchInputs.youtube} onChange={e=>setMatchInputs({...matchInputs,youtube:e.target.value})} placeholder="https://youtube.com/..." className="w-full bg-black p-3 rounded-xl text-center text-xs border border-slate-700 text-white text-base"/>
