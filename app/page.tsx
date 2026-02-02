@@ -93,7 +93,6 @@ export default function FootballLeagueApp() {
     };
     updateTime();
     const t = setInterval(updateTime, 1000);
-    // Trigger animation for graph
     setTimeout(() => setIsLoaded(true), 500);
     return () => clearInterval(t);
   }, []);
@@ -339,18 +338,14 @@ export default function FootballLeagueApp() {
       return pick(COMMENTARY_POOL.GENERAL_WIN);
   };
 
-  // 🔥 [Update] Win Rate Predictor (Default 50:50 when no data)
+  // Win Rate Predictor Logic
   const getPrediction = (homeName: string, awayName: string) => {
       const getTeamScore = (name: string) => {
           if (name === 'TBD' || name === 'BYE') return 0;
-          // Current Season (Weight 70%)
           const current = activeRankingData.teams.find(t => t.name === name);
           const currentPts = current ? (current.points / (current.win + current.draw + current.loss || 1)) * 20 : 10; 
-          
-          // History (Weight 30%)
           const hist = historyData.teams.find(t => t.name === name);
           const histWinRate = hist ? (hist.win / (hist.win + hist.draw + hist.loss || 1)) * 100 : 30; // Default 30
-          
           return (currentPts * 0.7) + (histWinRate * 0.3);
       };
 
@@ -358,7 +353,7 @@ export default function FootballLeagueApp() {
       const aPower = getTeamScore(awayName);
       const total = hPower + aPower;
 
-      // If no data or 0 vs 0, return 50:50 to avoid 0%
+      // Default 50:50 if no data
       if (total === 0) return { hRate: 50, aRate: 50 };
 
       const hRate = Math.round((hPower / total) * 100);
@@ -415,7 +410,32 @@ export default function FootballLeagueApp() {
   };
 
   const handleRecordInputChange = (type: string, field: string, value: string) => { setRecordInputs(prev => ({ ...prev, [type]: { ...(prev as any)[type], [field]: value } })); };
-  const handleSaveOwner = async () => { if(newOwnerName) { if(editOwnerId) await updateDoc(doc(db,"users",editOwnerId),{nickname:newOwnerName,photo:newOwnerPhoto}); else await addDoc(collection(db,"users"),{id:Date.now(),nickname:newOwnerName,photo:newOwnerPhoto}); setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null); }};
+  
+  // 🔥 [Fix] Owner Name Cascade Update Logic
+  const handleSaveOwner = async () => {
+    if (newOwnerName) {
+      if (editOwnerId) {
+        const oldOwner = owners.find(o => o.docId === editOwnerId);
+        const oldName = oldOwner ? oldOwner.nickname : '';
+        await updateDoc(doc(db, "users", editOwnerId), { nickname: newOwnerName, photo: newOwnerPhoto });
+        if (oldName && oldName !== newOwnerName) {
+            const updates = seasons.map(async (s) => {
+                let isModified = false;
+                const newTeams = s.teams?.map(t => { if (t.ownerName === oldName) { isModified = true; return { ...t, ownerName: newOwnerName }; } return t; });
+                const newRounds = s.rounds?.map(r => ({ ...r, matches: r.matches.map(m => { let matchChanged = false; let newHomeOwner = m.homeOwner; let newAwayOwner = m.awayOwner; if (m.homeOwner === oldName) { newHomeOwner = newOwnerName; matchChanged = true; } if (m.awayOwner === oldName) { newAwayOwner = newOwnerName; matchChanged = true; } if (matchChanged) { isModified = true; return { ...m, homeOwner: newHomeOwner, awayOwner: newAwayOwner }; } return m; }) }));
+                if (isModified) { await updateDoc(doc(db, "seasons", String(s.id)), { teams: newTeams, rounds: newRounds }); }
+            });
+            await Promise.all(updates);
+            alert(`오너 정보 수정 완료! 관련 시즌 데이터도 모두 업데이트되었습니다.`);
+        } else { alert("오너 정보가 수정되었습니다."); }
+      } else {
+        await addDoc(collection(db, "users"), { id: Date.now(), nickname: newOwnerName, photo: newOwnerPhoto });
+        alert("새 오너가 등록되었습니다.");
+      }
+      setNewOwnerName(''); setNewOwnerPhoto(''); setEditOwnerId(null);
+    }
+  };
+
   const handleEditOwnerClick = (o: Owner) => { setEditOwnerId(o.docId!); setNewOwnerName(o.nickname); setNewOwnerPhoto(o.photo); };
   const handleCreateSeason = async () => { if(inputSeasonName) { const id=Date.now(); await setDoc(doc(db,"seasons",String(id)),{ id, name:inputSeasonName, type:inputSeasonType, leagueMode:inputSeasonType==='LEAGUE'?inputLeagueMode:'SINGLE', isActive:true, teams:[], rounds:[], prizes:{total:inputTotalPrize, ...prizes} }); setAdminTab(id); setViewSeasonId(id); setInputSeasonName(''); alert("게임 생성 완료! 팀을 배정해주세요."); } else { alert("시즌 이름 입력 필요"); } };
   const handleDeleteBanner = async (id:string) => { if(confirm("배너 삭제?")) await deleteDoc(doc(db,"banners",id)); };
@@ -440,19 +460,158 @@ export default function FootballLeagueApp() {
       }
   };
 
+  // 🔥 [Core Logic] Advanced Schedule Generator
   const generateRoundsLogic = (s: Season, teams: Team[]) => {
-    let shuffled: Team[] = [];
+    let rounds: Round[] = [];
+
+    // --- 1. LEAGUE LOGIC ---
     if (s.type === 'LEAGUE') {
-        const teamsByOwner: { [key: string]: Team[] } = {};
-        teams.forEach(t => { if(!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = []; teamsByOwner[t.ownerName].push(t); });
-        const ownerNames = Object.keys(teamsByOwner).sort(() => Math.random() - 0.5);
-        let maxTeams = 0; Object.values(teamsByOwner).forEach(arr => maxTeams = Math.max(maxTeams, arr.length));
-        for(let i=0; i<maxTeams; i++) { ownerNames.forEach(owner => { if(teamsByOwner[owner][i]) shuffled.push(teamsByOwner[owner][i]); }); }
-    } else {
-        shuffled = [...teams].sort(() => Math.random() - 0.5);
-    }
-    const rounds: Round[] = [];
-    if(s.type === 'TOURNAMENT') {
+        // Group by Owner
+        const teamsByOwner: Record<string, Team[]> = {};
+        teams.forEach(t => {
+            if (!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = [];
+            teamsByOwner[t.ownerName].push(t);
+        });
+        const ownerKeys = Object.keys(teamsByOwner);
+        const maxTeamsPerOwner = Math.max(...Object.values(teamsByOwner).map(t => t.length));
+        
+        // ✨ Condition for Smart Avoidance (Symmetric: Even Owners, Equal Teams)
+        const isSymmetric = ownerKeys.length % 2 === 0 && ownerKeys.every(o => teamsByOwner[o].length === maxTeamsPerOwner);
+
+        // [Option A] Smart Schedule (No Civil War)
+        if (isSymmetric) {
+            console.log("⚡ Generating Smart Avoidance Schedule...");
+            const numOwners = ownerKeys.length;
+            const teamsPerOwner = maxTeamsPerOwner;
+            // Round Robin for Owners (Polygon method for owners)
+            // Fix first owner, rotate others
+            const fixedOwner = ownerKeys[0];
+            const rotatingOwners = ownerKeys.slice(1);
+            const numOwnerRounds = numOwners - 1;
+
+            let roundCounter = 1;
+
+            for (let r = 0; r < numOwnerRounds; r++) {
+                // Owner Matchups for this round
+                const ownerMatches: [string, string][] = [];
+                // 1. Fixed vs Rotated[Last]
+                ownerMatches.push([fixedOwner, rotatingOwners[rotatingOwners.length - 1 - r]]);
+                
+                // 2. Pairs from the rest
+                for (let i = 0; i < (numOwners - 2) / 2; i++) {
+                    const o1 = rotatingOwners[i];
+                    const o2 = rotatingOwners[rotatingOwners.length - 2 - r - i]; // Adjust index logic for rotation
+                    // Simple Rotation Logic:
+                    // Indices in rotating array: 0, 1, 2...
+                    // Let's use standard indices for rotation
+                    // Current state of rotating array for round r:
+                    // shift r times? No, let's just use the standard algo.
+                }
+            }
+            
+            // Re-implement Simple Owner Rotation correctly
+            let currentOwnerList = [...ownerKeys]; // [A, B, C, D]
+            // We need N-1 rounds of owner matchups
+            
+            for (let r = 0; r < numOwners - 1; r++) {
+                // Generate Team Matches for this Owner-Round
+                // We split this into 'teamsPerOwner' sub-rounds to distribute games
+                
+                const ownerPairs: [string, string][] = [];
+                for(let i=0; i<numOwners/2; i++) {
+                    ownerPairs.push([currentOwnerList[i], currentOwnerList[numOwners-1-i]]);
+                }
+
+                // Create k Sub-Rounds (where k = teamsPerOwner)
+                // For each Sub-Round, we match teams from Owner A and Owner B
+                for (let sub = 0; sub < teamsPerOwner; sub++) {
+                    let subRoundMatches: Match[] = [];
+                    
+                    ownerPairs.forEach(pair => {
+                        const ownerA = pair[0];
+                        const ownerB = pair[1];
+                        const teamsA = teamsByOwner[ownerA];
+                        const teamsB = teamsByOwner[ownerB];
+
+                        // Create matches A[i] vs B[(i+sub)%k]
+                        for (let t = 0; t < teamsPerOwner; t++) {
+                            const team1 = teamsA[t];
+                            const team2 = teamsB[(t + sub) % teamsPerOwner];
+                            
+                            subRoundMatches.push({
+                                id: `${s.id}_R${roundCounter}_M${subRoundMatches.length}`, seasonId: s.id,
+                                home: team1.name, away: team2.name,
+                                homeLogo: team1.logo, awayLogo: team2.logo,
+                                homeOwner: team1.ownerName, awayOwner: team2.ownerName,
+                                homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${roundCounter}`, matchLabel: `Match`
+                            });
+                        }
+                    });
+                    
+                    if (subRoundMatches.length > 0) {
+                        rounds.push({ round: roundCounter, matches: subRoundMatches, seasonId: s.id, name: `Round ${roundCounter}` });
+                        roundCounter++;
+                    }
+                }
+
+                // Rotate Owners (Keep [0] fixed, rotate [1...N-1])
+                const first = currentOwnerList[1];
+                const rest = currentOwnerList.slice(2);
+                currentOwnerList = [currentOwnerList[0], ...rest, first];
+            }
+
+        } else {
+            // [Option B] Standard Shuffle (Fallback)
+            console.log("🎲 Generating Standard Schedule...");
+            let shuffled: Team[] = [];
+            // Smart Seed for League
+            const teamsByOwner: { [key: string]: Team[] } = {};
+            teams.forEach(t => { if(!teamsByOwner[t.ownerName]) teamsByOwner[t.ownerName] = []; teamsByOwner[t.ownerName].push(t); });
+            const ownerNames = Object.keys(teamsByOwner).sort(() => Math.random() - 0.5);
+            let maxTeams = 0; Object.values(teamsByOwner).forEach(arr => maxTeams = Math.max(maxTeams, arr.length));
+            for(let i=0; i<maxTeams; i++) { ownerNames.forEach(owner => { if(teamsByOwner[owner][i]) shuffled.push(teamsByOwner[owner][i]); }); }
+            
+            const dummyTeam = {id:0, seasonId:s.id, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0};
+            if(shuffled.length % 2 !== 0) shuffled.push(dummyTeam as Team);
+            const numTeams = shuffled.length; const numRounds = numTeams - 1; const half = numTeams / 2;
+            let teamsArr = [...shuffled];
+
+            for(let r = 0; r < numRounds; r++) { 
+                let roundMatches: Match[] = []; 
+                for(let i=0; i<half; i++) { 
+                    const home = teamsArr[i]; 
+                    const away = teamsArr[numTeams - 1 - i]; 
+                    if(home.name !== 'BYE' && away.name !== 'BYE') { 
+                        roundMatches.push({
+                            id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName,
+                            homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}`, matchLabel: `Game ${i+1}`
+                        }); 
+                    } 
+                } 
+                rounds.push({round: r+1, matches: roundMatches, seasonId: s.id, name: `Round ${r+1}`});
+                const first = teamsArr[0]; const rest = teamsArr.slice(1);
+                teamsArr = [first, rest[rest.length - 1], ...rest.slice(0, rest.length - 1)];
+            }
+        }
+
+        // Apply Double League if needed (Mirroring)
+        if(s.leagueMode === 'DOUBLE') { 
+            const initialRoundsCount = rounds.length; 
+            const newRounds: Round[] = []; 
+            rounds.forEach((r, idx) => { 
+                const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` })); 
+                newRounds.push({round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` }); 
+            }); 
+            // Fix rounds naming
+            newRounds.forEach((r, idx) => { r.name = `Round ${initialRoundsCount + idx + 1}`; });
+            rounds.push(...newRounds);
+        }
+    } 
+    
+    // --- 2. TOURNAMENT LOGIC (Existing) ---
+    else {
+        let shuffled = [...teams].sort(() => Math.random() - 0.5);
+        // Avoid same owner in round 1
         for(let i=0; i<shuffled.length-1; i+=2) { if(shuffled[i].ownerName === shuffled[i+1]?.ownerName) { for(let j=i+2; j<shuffled.length; j++) { if(shuffled[j].ownerName !== shuffled[i].ownerName) { const temp = shuffled[i+1]; shuffled[i+1] = shuffled[j]; shuffled[j] = temp; break; } } } }
         const nextPow2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length))); const matchCount = nextPow2 / 2; 
         let matches: Match[] = [];
@@ -469,40 +628,6 @@ export default function FootballLeagueApp() {
             }
             rounds.push({ round: rIdx, matches: nextMatches, seasonId: s.id, name: stageName });
             if(currentCount === 0.5) break; currentCount /= 2; rIdx++;
-        }
-    } else {
-        const dummyTeam = {id:0, seasonId:s.id, name:'BYE', logo:FALLBACK_IMG, ownerName:'-', region:'', tier:'', win:0, draw:0, loss:0, points:0, gf:0, ga:0, gd:0};
-        if(shuffled.length % 2 !== 0) shuffled.push(dummyTeam as Team);
-        const numTeams = shuffled.length; const numRounds = numTeams - 1; const half = numTeams / 2;
-        let teamsArr = [...shuffled];
-
-        for(let r = 0; r < numRounds; r++) { 
-            let roundMatches: Match[] = []; 
-            for(let i=0; i<half; i++) { 
-                const home = teamsArr[i]; 
-                const away = teamsArr[numTeams - 1 - i]; 
-                if(home.name !== 'BYE' && away.name !== 'BYE') { 
-                    roundMatches.push({
-                        id: `${s.id}_R${r+1}_M${i}`, seasonId: s.id, home: home.name, away: away.name, homeLogo: home.logo, awayLogo: away.logo, homeOwner: home.ownerName, awayOwner: away.ownerName,
-                        homeScore: '', awayScore: '', homeScorers: [], awayScorers: [], homeAssists: [], awayAssists: [], status: 'UPCOMING', youtubeUrl: '', stage: `Round ${r+1}`, matchLabel: `Game ${i+1}`
-                    }); 
-                } 
-            } 
-            rounds.push({round: r+1, matches: roundMatches, seasonId: s.id, name: `Round ${r+1}`});
-            const first = teamsArr[0]; const rest = teamsArr.slice(1);
-            teamsArr = [first, rest[rest.length - 1], ...rest.slice(0, rest.length - 1)];
-        }
-        
-        if(s.leagueMode === 'DOUBLE') { 
-            const initialRoundsCount = rounds.length; 
-            const newRounds: Round[] = []; 
-            rounds.forEach((r, idx) => { 
-                const returnMatches = r.matches.map(m => ({ ...m, id: m.id + '_return', home: m.away, away: m.home, homeLogo: m.awayLogo, awayLogo: m.homeLogo, homeOwner: m.awayOwner, awayOwner: m.homeOwner, stage: `Round ${initialRoundsCount + idx + 1}` })); 
-                newRounds.push({round: initialRoundsCount + idx + 1, matches: returnMatches, seasonId: s.id, name: `Round ${initialRoundsCount + idx + 1}` }); 
-            }); 
-            const firstHalfLen = initialRoundsCount;
-             newRounds.forEach((r, idx) => { r.name = `Round ${firstHalfLen + idx + 1}`; });
-             rounds.push(...newRounds);
         }
     }
     return rounds;
@@ -579,7 +704,7 @@ export default function FootballLeagueApp() {
         {renderBanners()}
         <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
           <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
-          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_15_01_Graph_Upgrade</p>
+          <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_15_02_Smart_Schedule</p>
         </div>
         <div className="absolute top-4 left-4 z-30 bg-black/50 px-3 py-1 rounded-full border border-slate-800 text-[10px] text-slate-300 font-mono tracking-widest">{currentTime}</div>
         <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors"><img src="https://img.icons8.com/ios-filled/50/ffffff/share.png" className="w-5 h-5" alt="share"/></button>
@@ -760,7 +885,7 @@ export default function FootballLeagueApp() {
                                         </div>
                                     )}
 
-                                    {/* 🔥 [Feature Update] Prediction Bar (Redesigned with Split Gradient) */}
+                                    {/* 🔥 [Feature Update] Prediction Bar (Redesigned with Split Gradient & Lightning) */}
                                     {m.home !== 'TBD' && m.home !== 'BYE' && m.away !== 'TBD' && m.away !== 'BYE' && (
                                         <div className="w-full mt-3 mb-2 px-1">
                                             {/* Label */}
@@ -1032,27 +1157,6 @@ export default function FootballLeagueApp() {
            </div>
         )}
       </main>
-
-      {/* 🔥 [Fix] Restored Footer */}
-      <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
-          <p className="text-slate-500 text-xs mb-1 font-bold">게임은 eFootball 2025 기반으로 게임을 진행 합니다.</p>
-          <p className="text-slate-500 text-xs mb-4">게임 참여 문의 : joycbue@gmail.com</p>
-          
-          <div className="flex justify-center gap-6 mb-6">
-              <a href="https://www.konami.com/games/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="Konami">
-                  <img src="https://img.icons8.com/ios-filled/50/ffffff/controller.png" className="w-6 h-6" alt="Konami"/>
-              </a>
-              <a href="https://www.konami.com/efootball/ko/" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="eFootball Official">
-                  <img src="https://img.icons8.com/ios-filled/50/ffffff/football.png" className="w-6 h-6" alt="eFootball"/>
-              </a>
-              <a href="https://www.youtube.com/@eFootball_Live_evolution" target="_blank" rel="noreferrer" className="opacity-50 hover:opacity-100 transition-opacity" title="YouTube Channel">
-                  <img src="https://img.icons8.com/ios-filled/50/ffffff/youtube-play.png" className="w-6 h-6" alt="YouTube"/>
-              </a>
-          </div>
-          
-          <p className="text-[9px] text-slate-700 mt-2 uppercase tracking-widest">© 2026 eFootball Live Evolution League. All Rights Reserved.</p>
-          <p className="text-[9px] text-slate-800 mt-1">Created 26.01</p>
-      </footer>
 
       {editingMatch && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4">
