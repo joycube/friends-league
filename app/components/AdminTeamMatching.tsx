@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { updateDoc, doc } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Team, FALLBACK_IMG } from '../types';
@@ -16,10 +16,11 @@ interface Props {
 }
 
 export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, onNavigateToSchedule, onDeleteSchedule }: Props) => {
-    // 1. 상태 관리 (이 컴포넌트 안에서만 돔)
+    // 1. 상태 관리
     const [selectedOwnerId, setSelectedOwnerId] = useState('');
     const [selectedMasterTeamDocId, setSelectedMasterTeamDocId] = useState('');
     const [randomResult, setRandomResult] = useState<MasterTeam | null>(null);
+    const [isRolling, setIsRolling] = useState(false);
 
     // 필터 옵션
     const [filterCategory, setFilterCategory] = useState('ALL');
@@ -27,10 +28,22 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
     const [filterTier, setFilterTier] = useState('ALL');
     const [searchTeam, setSearchTeam] = useState('');
 
-    // 필터 변경 시 랜덤 결과 초기화
-    useEffect(() => { if (randomResult) setRandomResult(null); }, [filterCategory, filterLeague, filterTier, searchTeam]);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // 2. 팀 후보군 계산 (useMemo)
+    // 🔥 스케줄 존재 여부 확인 (안전장치 트리거)
+    const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
+
+    useEffect(() => { 
+        if (randomResult && !isRolling) setRandomResult(null); 
+    }, [filterCategory, filterLeague, filterTier, searchTeam]);
+
+    useEffect(() => {
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, []);
+
+    // 2. 팀 후보군 계산
     const availableTeams = useMemo(() => {
         const assignedNames = new Set(targetSeason.teams?.map(t => t.name) || []);
         let teams = masterTeams.filter(t => !assignedNames.has(t.name));
@@ -43,23 +56,40 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         return getSortedTeamsLogic(teams, '');
     }, [masterTeams, targetSeason, filterCategory, filterLeague, filterTier, searchTeam]);
 
-    // 3. 랜덤 로직 (옵션 변경 X)
+    // 3. 룰렛 로직
     const handleRandom = () => {
+        if (hasSchedule) return alert("🚫 스케줄이 이미 생성되어 팀을 추가할 수 없습니다.\n먼저 스케줄을 삭제해주세요.");
         if (!selectedOwnerId) return alert("오너를 먼저 선택해주세요.");
         if (availableTeams.length === 0) return alert("조건에 맞는 남은 팀이 없습니다.");
+        if (isRolling) return;
 
-        const pick = availableTeams[Math.floor(Math.random() * availableTeams.length)];
-        setSelectedMasterTeamDocId(pick.docId || String(pick.id));
-        setRandomResult(pick);
-        
-        // 스크롤 이동
+        setIsRolling(true);
+        setRandomResult(null);
+
+        const winnerIndex = Math.floor(Math.random() * availableTeams.length);
+        const finalWinner = availableTeams[winnerIndex];
+
+        intervalRef.current = setInterval(() => {
+            const tempIndex = Math.floor(Math.random() * availableTeams.length);
+            setRandomResult(availableTeams[tempIndex]);
+        }, 50);
+
         setTimeout(() => {
-            document.getElementById(`team-card-${pick.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            setRandomResult(finalWinner);
+            setSelectedMasterTeamDocId(finalWinner.docId || String(finalWinner.id));
+            setIsRolling(false);
+            setTimeout(() => {
+                document.getElementById(`team-card-${finalWinner.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }, 2000);
     };
 
-    // 4. 매칭 확정
+    // 4. 매칭 확정 (안전장치 적용)
     const handleAddTeam = async () => {
+        if (hasSchedule) return alert("🚫 스케줄이 생성된 상태에서는 팀을 추가할 수 없습니다.\n[Step 2]에서 스케줄을 먼저 삭제(초기화)해주세요.");
+        if (isRolling) return;
+        
         if (!selectedOwnerId || !selectedMasterTeamDocId) return alert("오너와 팀을 선택하세요.");
         const owner = owners.find(o => String(o.id) === selectedOwnerId);
         const mTeam = masterTeams.find(t => (t.docId || String(t.id)) === selectedMasterTeamDocId);
@@ -76,8 +106,10 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         setRandomResult(null);
     };
 
-    // 5. 팀 삭제
+    // 5. 팀 삭제 (안전장치 적용)
     const handleRemoveTeam = async (teamId: number, teamName: string) => {
+        if (hasSchedule) return alert("🚫 스케줄이 생성된 상태에서는 팀을 삭제할 수 없습니다.\n[Step 2]에서 스케줄을 먼저 삭제(초기화)해주세요.");
+        
         if (!confirm("정말 삭제하시겠습니까?")) return;
         const updatedTeams = targetSeason.teams.filter(t => t.id !== teamId);
         let updatedRounds = targetSeason.rounds ? [...targetSeason.rounds] : [];
@@ -89,7 +121,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         await updateDoc(doc(db, "seasons", String(targetSeason.id)), { teams: updatedTeams, rounds: updatedRounds });
     };
 
-    // 6. 스케줄 생성
     const handleGenerateSchedule = async (isRegen = false) => {
         if (targetSeason.teams.length < 2) return alert("최소 2팀 이상 필요.");
         if (isRegen && !confirm("기존 스케줄을 덮어씌우시겠습니까?")) return;
@@ -98,8 +129,6 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
         if (confirm("스케줄 생성 완료. 이동하시겠습니까?")) onNavigateToSchedule(targetSeason.id);
     };
 
-    const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
-
     return (
         <div className="space-y-6 animate-in fade-in">
             {/* Step 1 */}
@@ -107,7 +136,7 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
                 <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-slate-500 font-bold">1. Select Owner</label>
-                    <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm">
+                    <select value={selectedOwnerId} onChange={e => setSelectedOwnerId(e.target.value)} disabled={isRolling} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm">
                         <option value="">👤 Select Owner</option>
                         {owners.map(o => <option key={o.id} value={o.id}>{o.nickname}</option>)}
                     </select>
@@ -116,33 +145,38 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
                     <div className="flex justify-between items-center">
                         <label className="text-[10px] text-slate-500 font-bold">2. Search Options</label>
-                        <button onClick={handleRandom} className="bg-purple-700 px-3 py-1.5 rounded text-xs font-bold text-white hover:bg-purple-600 shadow-lg border border-purple-500 flex items-center gap-1 active:scale-95 transition-transform">🎲 Random Pick</button>
+                        <button 
+                            onClick={handleRandom} 
+                            disabled={isRolling || hasSchedule} // 스케줄 있으면 룰렛도 막음
+                            className={`px-4 py-2 rounded text-xs font-bold text-white shadow-lg border border-purple-500 flex items-center gap-2 transition-all ${isRolling || hasSchedule ? 'bg-purple-900 cursor-not-allowed opacity-50' : 'bg-purple-700 hover:bg-purple-600 active:scale-95'}`}
+                        >
+                            {isRolling ? <span className="animate-spin">🎲</span> : '🎲'} 
+                            {isRolling ? 'Rolling...' : 'Random Pick'}
+                        </button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs"><option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select>
-                        <select value={filterLeague} onChange={e => setFilterLeague(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs"><option value="">All Leagues</option>{getSortedLeagues(leagues.map(l => l.name)).map(l => <option key={l} value={l}>{l}</option>)}</select>
-                        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs"><option value="ALL">All Tiers</option><option value="S">S Tier</option><option value="A">A Tier</option><option value="B">B Tier</option><option value="C">C Tier</option></select>
-                        <input type="text" value={searchTeam} onChange={e => setSearchTeam(e.target.value)} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs" />
+                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs"><option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option></select>
+                        <select value={filterLeague} onChange={e => setFilterLeague(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs"><option value="">All Leagues</option>{getSortedLeagues(leagues.map(l => l.name)).map(l => <option key={l} value={l}>{l}</option>)}</select>
+                        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} disabled={isRolling} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs"><option value="ALL">All Tiers</option><option value="S">S Tier</option><option value="A">A Tier</option><option value="B">B Tier</option><option value="C">C Tier</option></select>
+                        <input type="text" value={searchTeam} onChange={e => setSearchTeam(e.target.value)} disabled={isRolling} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs" />
                     </div>
                 </div>
 
                 <div className="space-y-2">
                     <div className="flex justify-between items-center">
                         <label className="text-[10px] text-slate-500 font-bold">3. Select Team</label>
-                        {(filterLeague || randomResult) && <button onClick={() => { setFilterLeague(''); setRandomResult(null); }} className="text-[10px] text-slate-400 border border-slate-700 px-2 rounded hover:text-white">↩ Show All Leagues</button>}
+                        {!isRolling && (filterLeague || randomResult) && <button onClick={() => { setFilterLeague(''); setRandomResult(null); }} className="text-[10px] text-slate-400 border border-slate-700 px-2 rounded hover:text-white">↩ Show All Leagues</button>}
                     </div>
 
-                    {/* 랜덤 결과 단독 노출 */}
                     {randomResult ? (
-                        <div className="flex justify-center py-6 animate-in zoom-in duration-300">
-                            <div className="relative bg-emerald-900/20 p-6 rounded-2xl border-2 border-emerald-500 flex flex-col items-center gap-3 shadow-[0_0_30px_rgba(16,185,129,0.3)] min-w-[200px]">
-                                <div className="absolute -top-3 bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">✨ Random Picked!</div>
-                                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center p-2 shadow-lg"><img src={randomResult.logo} className="w-full h-full object-contain" alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div>
-                                <div className="text-center"><p className="text-lg font-black text-white">{randomResult.name}</p><div className="flex items-center justify-center gap-2 mt-1"><span className="text-xs text-slate-400">{randomResult.region}</span><span className={`text-[10px] px-2 py-0.5 rounded font-bold ${getTierBadgeColor(randomResult.tier)}`}>{randomResult.tier}</span></div></div>
+                        <div className="flex justify-center py-6">
+                            <div className={`relative bg-emerald-900/20 p-6 rounded-2xl border-2 border-emerald-500 flex flex-col items-center gap-3 shadow-[0_0_30px_rgba(16,185,129,0.3)] min-w-[200px] transition-all duration-300 ${isRolling ? 'scale-95 opacity-80 blur-[1px]' : 'scale-110 opacity-100'}`}>
+                                <div className={`absolute -top-3 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg transition-colors ${isRolling ? 'bg-purple-600 animate-pulse' : 'bg-emerald-600'}`}>{isRolling ? '🎰 Rolling...' : '✨ Random Picked!'}</div>
+                                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center p-3 shadow-lg overflow-hidden"><img src={randomResult.logo} className={`w-full h-full object-contain transition-transform ${isRolling ? 'animate-pulse scale-90' : 'scale-100'}`} alt="" onError={(e: any) => e.target.src = FALLBACK_IMG} /></div>
+                                <div className="text-center"><p className="text-xl font-black text-white">{randomResult.name}</p><div className="flex items-center justify-center gap-2 mt-1"><span className="text-xs text-slate-400">{randomResult.region}</span><span className={`text-[10px] px-2 py-0.5 rounded font-bold ${getTierBadgeColor(randomResult.tier)}`}>{randomResult.tier}</span></div></div>
                             </div>
                         </div>
                     ) : (
-                        // 리스트 노출
                         !filterLeague && !searchTeam ? (
                             <div className="space-y-6 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
                                 {(filterCategory === 'ALL' || filterCategory === 'CLUB') && (
@@ -175,7 +209,14 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                         )
                     )}
                 </div>
-                <button onClick={handleAddTeam} className="bg-emerald-600 py-3 font-bold rounded hover:bg-emerald-500 w-full shadow-lg text-sm">✅ Confirm Match</button>
+                {/* 🔥 추가 버튼 안전장치 적용: 스케줄 있으면 Locked */}
+                <button 
+                    onClick={handleAddTeam} 
+                    disabled={isRolling || hasSchedule} 
+                    className={`w-full py-3 font-bold rounded shadow-lg text-sm transition-all ${isRolling || hasSchedule ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
+                >
+                    {hasSchedule ? '🔒 Schedule Locked (Cannot Add Teams)' : (isRolling ? 'Wait for Result...' : '✅ Confirm Match')}
+                </button>
             </div>
 
             {/* Step 2 */}
@@ -186,7 +227,17 @@ export const AdminTeamMatching = ({ targetSeason, owners, leagues, masterTeams, 
                 </div>
                 <div className="grid grid-cols-4 md:grid-cols-5 gap-3">
                     {targetSeason.teams?.map(t => (
-                        <div key={t.id} className="flex flex-col items-center bg-slate-900 p-2 rounded-lg border border-slate-800 relative group"><div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 p-1.5 mb-1"><img src={t.logo} className="w-full h-full object-contain" alt="" /></div><div className="w-full text-center"><p className="text-[10px] font-bold text-white truncate w-full">{t.name}</p><div className="flex items-center justify-center gap-1 mt-1 flex-wrap"><span className="text-[9px] text-emerald-400 font-bold">{t.ownerName}</span><span className="text-[8px] text-slate-500">|</span><span className="text-[8px] text-slate-400 truncate max-w-[40px]">{t.region}</span><span className={`text-[7px] px-1.5 rounded ${getTierBadgeColor(t.tier)}`}>{t.tier}</span></div></div><button onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} className="absolute top-1 right-1 text-slate-600 hover:text-red-500 font-bold p-1">✕</button></div>
+                        <div key={t.id} className="flex flex-col items-center bg-slate-900 p-2 rounded-lg border border-slate-800 relative group">
+                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 p-1.5 mb-1"><img src={t.logo} className="w-full h-full object-contain" alt="" /></div>
+                            <div className="w-full text-center"><p className="text-[10px] font-bold text-white truncate w-full">{t.name}</p><div className="flex items-center justify-center gap-1 mt-1 flex-wrap"><span className="text-[9px] text-emerald-400 font-bold">{t.ownerName}</span><span className="text-[8px] text-slate-500">|</span><span className="text-[8px] text-slate-400 truncate max-w-[40px]">{t.region}</span><span className={`text-[7px] px-1.5 rounded ${getTierBadgeColor(t.tier)}`}>{t.tier}</span></div></div>
+                            {/* 🔥 삭제 버튼 안전장치 적용: 스케줄 있으면 🔒 */}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveTeam(t.id, t.name); }} 
+                                className={`absolute top-1 right-1 font-bold p-1 ${hasSchedule ? 'text-slate-700 cursor-not-allowed' : 'text-slate-600 hover:text-red-500'}`}
+                            >
+                                {hasSchedule ? '🔒' : '✕'}
+                            </button>
+                        </div>
                     ))}
                     {(!targetSeason.teams || targetSeason.teams.length === 0) && <p className="text-slate-600 text-xs col-span-4 text-center py-4">No teams assigned yet.</p>}
                 </div>
