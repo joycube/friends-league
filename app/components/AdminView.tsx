@@ -1,8 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase'; 
-import { updateDoc, doc, deleteDoc } from 'firebase/firestore'; // deleteDoc 추가
-import { Season, Owner, League, MasterTeam, Team, Banner } from '../types'; // Banner 추가
+import { updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { Season, Owner, League, MasterTeam, Team, Banner } from '../types';
 import { AdminLeagueManager, AdminTeamManager } from './AdminTeamManagement'; 
 import { AdminBannerManager } from './AdminBannerManager'; 
 import { generateRoundsLogic } from '../utils/scheduler';
@@ -15,7 +15,6 @@ interface AdminViewProps {
   owners: Owner[];
   leagues: League[];
   masterTeams: MasterTeam[];
-  // 👇 banners props 추가
   banners: Banner[];
   onAdminLogin: (pw: string) => boolean;
   onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void;
@@ -33,7 +32,7 @@ export const AdminView = ({
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState('');
   
-  // ... (기존 State 생략)
+  // 시즌 생성 관련
   const [inputSeasonName, setInputSeasonName] = useState('');
   const [inputSeasonType, setInputSeasonType] = useState('LEAGUE');
   const [inputLeagueMode, setInputLeagueMode] = useState('SINGLE');
@@ -42,17 +41,20 @@ export const AdminView = ({
   const [prizes, setPrizes] = useState({ first: 45000, second: 25000, third: 10000, scorer: 10000, assist: 10000 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
+  // 오너 관리
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
 
+  // 팀 배정 관련 State
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
   const [selectedMasterTeamId, setSelectedMasterTeamId] = useState('');
   const [filterCategory, setFilterCategory] = useState('ALL'); 
   const [filterLeague, setFilterLeague] = useState('ALL');
+  const [filterTier, setFilterTier] = useState('ALL'); // 🔥 등급 필터 추가
   const [searchTeam, setSearchTeam] = useState('');
+  const [visibleTeamCount, setVisibleTeamCount] = useState(12); // 🔥 리드모어 기능
 
-  // ... (로그인 및 useEffect 로직 유지)
   useEffect(() => {
     const loginTime = localStorage.getItem('adminLoginTime');
     if (loginTime && Date.now() - Number(loginTime) < 3 * 60 * 60 * 1000) setAdminUnlocked(true);
@@ -81,25 +83,26 @@ export const AdminView = ({
       }
   }, [inputTotalPrize, isAutoPrize]);
 
-  // 🔥 [추가] 랜덤 팀 선택 로직
+  // 🔥 [수정] 랜덤 팀 선택 로직 (중복 완벽 방지)
   const handleRandomTeam = (seasonId: number) => {
       const season = seasons.find(s => s.id === seasonId);
       if (!season) return;
 
-      // 1. 현재 필터링 조건에 맞는 팀들 가져오기
+      // 1. 현재 필터링 조건 (리그, 카테고리, 등급) 적용
       let candidates = masterTeams;
       if (filterCategory !== 'ALL') candidates = candidates.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
       if (filterLeague !== 'ALL') candidates = candidates.filter(t => t.region === filterLeague);
+      if (filterTier !== 'ALL') candidates = candidates.filter(t => t.tier === filterTier);
 
-      // 2. 이미 시즌에 배정된 팀 제외
+      // 2. 이미 시즌에 배정된 팀 이름 제외
       const assignedNames = new Set(season.teams?.map(t => t.name) || []);
       candidates = candidates.filter(t => !assignedNames.has(t.name));
 
-      if (candidates.length === 0) return alert("조건에 맞는 남은 팀이 없습니다.");
+      if (candidates.length === 0) return alert("조건에 맞는 남은 팀이 없습니다 (모두 배정됨).");
 
       // 3. 랜덤 픽
       const randomTeam = candidates[Math.floor(Math.random() * candidates.length)];
-      setSelectedMasterTeamId(String(randomTeam.id)); // 선택값 반영
+      setSelectedMasterTeamId(String(randomTeam.id)); 
   };
 
   const handleAddTeamToSeason = async (seasonId: number) => {
@@ -115,7 +118,9 @@ export const AdminView = ({
       };
       const updatedTeams = [...(season.teams || []), newTeam];
       await updateDoc(doc(db, "seasons", String(seasonId)), { teams: updatedTeams });
-      // alert(`${mTeam.name} 팀이 추가되었습니다.`); // 알림 생략 (빠른 추가 위해)
+      
+      // 추가 후 선택 초기화
+      setSelectedMasterTeamId('');
   };
 
   const handleRemoveTeamFromSeason = async (seasonId: number, teamId: number, teamName: string) => {
@@ -141,7 +146,6 @@ export const AdminView = ({
       if (confirm("스케줄이 생성 되었습니다. 해당 스케줄로 이동할까요?")) onNavigateToSchedule(seasonId);
   };
 
-  // 🔥 [추가] 시즌 삭제
   const handleDeleteSeason = async (seasonId: number) => {
       if (!confirm("시즌을 삭제할 경우, 모든 경기 기록과 스케쥴이 삭제가 됩니다. 삭제 하시겠습니까?")) return;
       await deleteDoc(doc(db, "seasons", String(seasonId)));
@@ -170,10 +174,18 @@ export const AdminView = ({
   if (typeof adminTab === 'number') {
       const targetSeason = seasons.find(s => s.id === adminTab);
       if (!targetSeason) return <div>Season Not Found</div>;
-      let filteredMasterTeams = masterTeams;
+      
+      // 🔥 [핵심] 필터링 로직 (이미 배정된 팀 제외)
+      const assignedTeamNames = new Set(targetSeason.teams?.map(t => t.name) || []);
+      
+      let filteredMasterTeams = masterTeams.filter(t => !assignedTeamNames.has(t.name)); // 중복 제외
+
       if (filterCategory !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
       if (filterLeague !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => t.region === filterLeague);
+      if (filterTier !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => t.tier === filterTier); // 등급 필터
+      
       filteredMasterTeams = getSortedTeamsLogic(filteredMasterTeams, searchTeam);
+      
       const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
 
       return (
@@ -185,41 +197,70 @@ export const AdminView = ({
                       <button onClick={() => handleDeleteSeason(targetSeason.id)} className="bg-red-900/80 px-3 py-1 rounded text-xs font-bold hover:bg-red-700 text-red-200">Season Delete</button>
                   </div>
               </div>
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 max-w-full overflow-hidden">
+
+              {/* Step 1. 팀 매칭 패널 */}
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
                   <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
-                  <div className="flex flex-col gap-3 w-full">
+                  
+                  {/* 1. 오너 선택 */}
+                  <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-500 font-bold">1. Select Owner</label>
                       <select value={selectedOwnerId} onChange={e=>setSelectedOwnerId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm">
                           <option value="">👤 Select Owner</option>
                           {owners.map(o => <option key={o.id} value={o.id}>{o.nickname}</option>)}
                       </select>
-                      <div className="flex gap-2 w-full">
-                          <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-slate-400 text-xs flex-1 min-w-0">
-                              <option value="ALL">Category</option>
-                              <option value="CLUB">Club</option>
-                              <option value="NATIONAL">National</option>
+                  </div>
+
+                  {/* 2. 팀 검색 필터 */}
+                  <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
+                      <div className="flex justify-between items-center">
+                          <label className="text-[10px] text-slate-500 font-bold">2. Search Team Filters</label>
+                          <button onClick={() => handleRandomTeam(targetSeason.id)} className="bg-purple-700 px-3 py-1 rounded text-[10px] font-bold text-white hover:bg-purple-600 shadow-lg">🎲 Random Pick</button>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs">
+                              <option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option>
                           </select>
-                          <select value={filterLeague} onChange={e=>setFilterLeague(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-slate-400 text-xs flex-1 min-w-0">
+                          <select value={filterLeague} onChange={e=>setFilterLeague(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs">
                               <option value="ALL">All Leagues</option>
                               {getSortedLeagues(leagues.map(l=>l.name)).map(l=><option key={l} value={l}>{l}</option>)}
                           </select>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                          <select value={selectedMasterTeamId} onChange={e=>setSelectedMasterTeamId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm flex-1">
-                              <option value="">🛡️ Select Team ({filteredMasterTeams.length})</option>
-                              {filteredMasterTeams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.tier})</option>)}
+                          <select value={filterTier} onChange={e=>setFilterTier(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs">
+                              <option value="ALL">All Tiers</option><option value="S">Tier S</option><option value="A">Tier A</option><option value="B">Tier B</option><option value="C">Tier C</option>
                           </select>
-                          {/* 🔥 랜덤 버튼 */}
-                          <button onClick={() => handleRandomTeam(targetSeason.id)} className="bg-purple-700 px-4 rounded font-bold text-white hover:bg-purple-600 text-xs whitespace-nowrap">🎲 Random</button>
+                          <input type="text" value={searchTeam} onChange={e=>setSearchTeam(e.target.value)} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs"/>
                       </div>
-
-                      <input type="text" value={searchTeam} onChange={e=>setSearchTeam(e.target.value)} placeholder="🔍 팀 이름 검색..." className="bg-slate-900 p-3 rounded border border-slate-700 text-white w-full text-sm"/>
-                      <button onClick={() => handleAddTeamToSeason(targetSeason.id)} className="bg-emerald-600 py-3 font-bold rounded hover:bg-emerald-500 w-full shadow-lg">매칭 완료 (Add Team)</button>
                   </div>
+
+                  {/* 3. 팀 선택 그리드 (직관적 UI) */}
+                  <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 font-bold">3. Select Team from Grid ({filteredMasterTeams.length} available)</label>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                          {filteredMasterTeams.slice(0, visibleTeamCount).map(t => (
+                              <div 
+                                key={t.id} 
+                                onClick={() => setSelectedMasterTeamId(String(t.id))} 
+                                className={`relative p-2 rounded-lg border cursor-pointer flex flex-col items-center gap-1 transition-all ${selectedMasterTeamId === String(t.id) ? 'bg-emerald-900/40 border-emerald-500 ring-1 ring-emerald-500' : 'bg-black border-slate-800 hover:border-slate-600'}`}
+                              >
+                                  <img src={t.logo} className="w-8 h-8 object-contain" alt=""/>
+                                  <span className="text-[9px] text-center text-slate-300 w-full truncate font-bold">{t.name}</span>
+                                  <span className={`text-[8px] px-1 rounded ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
+                              </div>
+                          ))}
+                      </div>
+                      {/* Read More */}
+                      {filteredMasterTeams.length > visibleTeamCount && (
+                          <button onClick={() => setVisibleTeamCount(prev => prev + 12)} className="w-full py-2 bg-slate-800 text-slate-400 text-xs font-bold rounded hover:bg-slate-700">▼ Show More Teams</button>
+                      )}
+                  </div>
+
+                  <button onClick={() => handleAddTeamToSeason(targetSeason.id)} className="bg-emerald-600 py-3 font-bold rounded hover:bg-emerald-500 w-full shadow-lg text-sm">✅ Confirm Match</button>
               </div>
+
+              {/* Step 2. 참가 팀 관리 */}
               <div className="bg-black p-4 rounded-xl border border-slate-800">
                   <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                      <h3 className="text-white font-bold text-sm">Step 2. 참가 팀 관리</h3>
+                      <h3 className="text-white font-bold text-sm">Step 2. 참가 팀 관리 ({targetSeason.teams?.length || 0})</h3>
                       <div className="flex gap-2">
                           {hasSchedule ? (
                               <>
@@ -233,11 +274,14 @@ export const AdminView = ({
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {targetSeason.teams?.map(t => (
-                          <div key={t.id} className="flex items-center gap-3 bg-slate-900 p-2 rounded border border-slate-800 relative group">
-                              <img src={t.logo} className="w-8 h-8 object-contain" alt=""/>
-                              <div className="overflow-hidden">
+                          <div key={t.id} className="flex items-center gap-2 bg-slate-900 p-2 rounded border border-slate-800 relative group">
+                              <img src={t.logo} className="w-8 h-8 object-contain bg-white rounded-full p-0.5" alt=""/>
+                              <div className="overflow-hidden flex-1">
                                   <p className="text-xs font-bold text-white truncate">{t.name}</p>
-                                  <p className="text-[10px] text-slate-500">{t.ownerName}</p>
+                                  <div className="flex items-center gap-1">
+                                      <span className="text-[9px] text-emerald-400">{t.ownerName}</span>
+                                      <span className="text-[8px] text-slate-500 px-1 border border-slate-700 rounded">{t.region}</span>
+                                  </div>
                               </div>
                               <span className={`absolute top-1 right-8 px-1 rounded text-[8px] ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
                               <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamFromSeason(targetSeason.id, t.id, t.name); }} className="absolute top-1 right-1 text-slate-600 hover:text-red-500 font-bold p-1">✕</button>
@@ -250,6 +294,7 @@ export const AdminView = ({
       );
   }
 
+  // 기본 Admin Menu (NEW, LEAGUES, TEAMS, etc.)
   return (
     <div className="bg-slate-900/80 p-5 rounded-3xl border border-slate-800 animate-in fade-in">
         <select value={adminTab} onChange={(e) => setAdminTab(e.target.value === 'NEW' || e.target.value === 'OWNER' || e.target.value === 'BANNER' || e.target.value === 'LEAGUES' || e.target.value === 'TEAMS' ? e.target.value : Number(e.target.value))} className="w-full bg-slate-950 p-4 rounded-xl border border-slate-700 text-sm mb-4 h-14 font-bold text-white">
@@ -265,7 +310,6 @@ export const AdminView = ({
 
         {adminTab === 'LEAGUES' && <AdminLeagueManager leagues={leagues} masterTeams={masterTeams} />}
         {adminTab === 'TEAMS' && <AdminTeamManager leagues={leagues} masterTeams={masterTeams} />}
-        {/* 🔥 [수정] 배너 데이터 전달 */}
         {adminTab === 'BANNER' && <AdminBannerManager banners={banners} />}
 
         {adminTab === 'NEW' && (

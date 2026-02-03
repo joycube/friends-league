@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
 import { Match, FALLBACK_IMG } from '../types';
-import { getPrediction } from '../utils/predictor'; // 파일 생성 확인 필수
+import { getPrediction } from '../utils/predictor'; 
 import { getMatchCommentary } from '../utils/commentary'; 
 
 interface MatchCardProps {
@@ -11,7 +11,6 @@ interface MatchCardProps {
   historyData?: any;
 }
 
-// 🔥 export const 확인
 export const MatchCard = ({ match, onClick, activeRankingData, historyData }: MatchCardProps) => {
   const [isLoaded, setIsLoaded] = useState(false);
   
@@ -27,25 +26,21 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
       onClick={() => onClick(match)} 
       className={`relative bg-slate-950 p-3 rounded-xl border ${match.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}
     >
-        <div className="flex justify-between items-center mb-2">
-            <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded">{match.matchLabel || 'Match'}</span>
-            {match.youtubeUrl && (
-                <span 
-                    className="text-[9px] text-red-500 font-bold flex items-center gap-1 z-20 cursor-pointer hover:underline"
-                    onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }}
-                >
-                    <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3" alt="YT"/> 하이라이트
-                </span>
-            )}
+        {/* 상단 라벨 */}
+        <div className="flex justify-center items-center mb-2">
+            <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded uppercase">{match.matchLabel || 'Match'}</span>
         </div>
 
         <div className="flex justify-between items-center">
+            {/* Home Team */}
             <div className="flex flex-col items-center w-1/3 gap-1">
                 <img src={match.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                 <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{match.home}</span>
                 <span className="text-[9px] text-slate-500">{match.homeOwner}</span>
             </div>
-            <div className="flex flex-col items-center">
+
+            {/* Score & VS & Highlight */}
+            <div className="flex flex-col items-center justify-center">
                 {match.status === 'FINISHED' ? (
                     <div className="flex items-center gap-2 text-3xl font-black italic text-white tracking-tighter">
                         <span className={Number(match.homeScore)>Number(match.awayScore)?'text-emerald-400':''}>{match.homeScore}</span>
@@ -55,7 +50,20 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
                 ) : (
                     <div className="bg-slate-900 px-3 py-1 rounded text-xs font-bold text-slate-500">VS</div>
                 )}
+
+                {/* 🔥 하이라이트 버튼 위치 변경 (스코어 하단) */}
+                {match.youtubeUrl && (
+                    <div 
+                        className="mt-1 bg-red-900/20 border border-red-900/50 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer hover:bg-red-900/40 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); window.open(match.youtubeUrl, '_blank'); }}
+                    >
+                        <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-3 h-3" alt="YT"/>
+                        <span className="text-[8px] text-red-400 font-bold">Highlight</span>
+                    </div>
+                )}
             </div>
+
+            {/* Away Team */}
             <div className="flex flex-col items-center w-1/3 gap-1">
                 <img src={match.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                 <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{match.away}</span>
@@ -63,6 +71,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         </div>
 
+        {/* 득점자 정보 */}
         {match.status === 'FINISHED' && (
             <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-2 gap-2 text-[9px]">
                 <div className="text-center space-y-0.5">
@@ -76,6 +85,7 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         )}
 
+        {/* 승률 예측 바 */}
         {match.home !== 'TBD' && match.home !== 'BYE' && match.away !== 'TBD' && match.away !== 'BYE' && (
             <div className="w-full mt-3 mb-2 px-1">
                 <div className="text-center text-[8px] text-slate-500 font-bold mb-1 tracking-widest uppercase">WIN RATE PREDICTION</div>
