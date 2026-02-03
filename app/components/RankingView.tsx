@@ -1,7 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from 'react';
 import { FALLBACK_IMG } from '../types'; 
-// 👇 [수정] 올바른 경로로 변경
 import { getYouTubeThumbnail } from '../utils/helpers'; 
 
 interface RankingViewProps {
@@ -50,7 +49,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
                 </table>
             </div>
         )}
-
+        
         {rankingTab === 'OWNERS' && (
             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs uppercase border-collapse">
@@ -73,7 +72,7 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
         )}
 
         {rankingTab === 'PLAYERS' && (
-            <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
+             <div className="bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden">
                 <div className="flex bg-slate-950 border-b border-slate-800">
                     <button onClick={()=>setRankPlayerMode('GOAL')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='GOAL'?'text-yellow-400 bg-slate-900':'text-slate-500'}`}>⚽ TOP SCORERS</button>
                     <button onClick={()=>setRankPlayerMode('ASSIST')} className={`flex-1 py-3 text-xs font-bold ${rankPlayerMode==='ASSIST'?'text-blue-400 bg-slate-900':'text-slate-500'}`}>🅰️ TOP ASSISTS</button>
@@ -99,21 +98,33 @@ export const RankingView = ({ seasons, viewSeasonId, setViewSeasonId, activeRank
 
         {rankingTab === 'HIGHLIGHTS' && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {activeRankingData.highlights.map((m:any, idx:number) => (
-                    <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
-                        <div className="relative aspect-video">
-                            <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
-                            <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
-                        </div>
-                        <div className="p-3 flex items-center gap-3">
-                            <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
-                                <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
+                {activeRankingData.highlights.map((m:any, idx:number) => {
+                    const isDraw = m.homeScore === m.awayScore;
+                    return (
+                        <div key={idx} className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group hover:border-emerald-500 transition-all cursor-pointer" onClick={() => window.open(m.youtubeUrl, '_blank')}>
+                            <div className="relative aspect-video">
+                                <img src={getYouTubeThumbnail(m.youtubeUrl)} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                                <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm group-hover:scale-110 transition-transform">▶</div></div>
+                            </div>
+                            <div className="p-3 flex items-center gap-3">
+                                {/* 🔥 [수정] 무승부일 경우 엠블럼 교차, 승자일 경우 승자만 */}
+                                {isDraw ? (
+                                    <div className="relative w-8 h-8 flex-shrink-0">
+                                        <img src={m.homeLogo} className="w-6 h-6 absolute top-0 left-0 rounded-full bg-white object-contain p-0.5 z-10 shadow-sm border border-slate-300" alt="" />
+                                        <img src={m.awayLogo} className="w-6 h-6 absolute bottom-0 right-0 rounded-full bg-white object-contain p-0.5 opacity-80" alt="" />
+                                    </div>
+                                ) : (
+                                    <img src={m.winnerLogo} className="w-8 h-8 rounded-full bg-white object-contain p-0.5" alt="" />
+                                )}
+                                
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase">{m.stage} • {m.matchLabel}</p>
+                                    <p className="text-xs font-bold text-white truncate">{m.home} <span className="text-emerald-400">{m.homeScore}:{m.awayScore}</span> {m.away}</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
                 {activeRankingData.highlights.length === 0 && <div className="col-span-3 text-center py-10 text-slate-500">등록된 하이라이트가 없습니다.</div>}
             </div>
         )}

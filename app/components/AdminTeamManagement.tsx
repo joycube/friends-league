@@ -5,20 +5,19 @@ import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from 'fireb
 import { League, MasterTeam, FALLBACK_IMG } from '../types'; 
 import { getSortedLeagues, getTierBadgeColor, getSortedTeamsLogic } from '../utils/helpers'; 
 
-// [공통] 등급 선택 버튼 (라운드형 정사각형)
 const TierSelector = ({ value, onChange, isMini = false }: { value: string, onChange: (t: string) => void, isMini?: boolean }) => {
     const tiers = ['S', 'A', 'B', 'C'];
     return (
-        <div className={`flex gap-2 ${isMini ? 'mt-2 justify-center' : ''}`}>
+        <div className={`flex gap-1 ${isMini ? 'mt-2' : ''}`}>
             {tiers.map(t => (
                 <button 
                     key={t} 
                     onClick={(e) => { e.stopPropagation(); onChange(t); }}
-                    className={`rounded-lg font-bold transition-all border flex items-center justify-center shadow-md ${
+                    className={`flex-1 rounded font-bold transition-all border ${
                         value === t 
-                        ? getTierBadgeColor(t) + ' ring-2 ring-white scale-110' 
+                        ? getTierBadgeColor(t) + ' ring-1 ring-white' 
                         : 'bg-slate-900 text-slate-500 border-slate-700 hover:bg-slate-800'
-                    } ${isMini ? 'w-8 h-8 text-[10px]' : 'flex-1 py-2 text-xs'}`}
+                    } ${isMini ? 'py-1 text-[10px]' : 'py-2 text-xs'}`}
                 >
                     {t}
                 </button>
@@ -27,7 +26,6 @@ const TierSelector = ({ value, onChange, isMini = false }: { value: string, onCh
     );
 };
 
-// 1. 리그 관리자 (바둑판 그리드 & 구분)
 export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[], masterTeams: MasterTeam[] }) => {
     const [name, setName] = useState('');
     const [logo, setLogo] = useState('');
@@ -67,26 +65,28 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
     const renderLeagueList = (category: 'CLUB' | 'NATIONAL', title: string) => {
         let targets = leagues.filter(l => l.category === category);
         if (search) targets = targets.filter(l => l.name.toLowerCase().includes(search.toLowerCase()));
+        
         const sortedNames = getSortedLeagues(targets.map(l => l.name));
         const displayList = sortedNames.map(name => targets.find(l => l.name === name)).filter(Boolean) as League[];
 
         if (displayList.length === 0) return null;
 
         return (
-            <div className="space-y-3 mb-8">
-                <h3 className={`text-sm font-bold border-l-4 pl-3 ${category === 'CLUB' ? 'text-emerald-400 border-emerald-500' : 'text-blue-400 border-blue-500'}`}>{title}</h3>
-                {/* 바둑판 그리드 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="space-y-2 mb-6">
+                <h3 className={`text-sm font-bold border-l-4 pl-2 ${category === 'CLUB' ? 'text-emerald-400 border-emerald-500' : 'text-blue-400 border-blue-500'}`}>{title}</h3>
+                <div className="grid grid-cols-4 gap-3">
                     {displayList.map(l => (
-                        <div key={l.id} onClick={() => handleEdit(l)} className={`p-3 rounded-xl border cursor-pointer transition-all group flex flex-col items-center gap-2 relative ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
-                            <div className="w-12 h-12 bg-white rounded-full p-1 shadow-md flex items-center justify-center overflow-hidden">
-                                <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
+                        <div key={l.id} onClick={() => handleEdit(l)} className={`p-4 rounded-xl flex items-center justify-between border cursor-pointer transition-all group ${editId === l.docId ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-slate-900 border-slate-800 hover:border-emerald-500 hover:bg-slate-800'}`}>
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-white rounded-full p-1 shadow-sm flex items-center justify-center">
+                                    <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
+                                </div>
+                                <div>
+                                    <p className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors">{l.name}</p>
+                                    <span className="text-[10px] text-slate-500">{masterTeams.filter(t => t.region === l.name).length} Teams</span>
+                                </div>
                             </div>
-                            <div className="text-center w-full">
-                                <p className="font-bold text-xs text-white truncate group-hover:text-emerald-400 transition-colors">{l.name}</p>
-                                <p className="text-[10px] text-slate-500">{masterTeams.filter(t => t.region === l.name).length} Teams</p>
-                            </div>
-                            <button onClick={(e)=>{e.stopPropagation(); handleDelete(l);}} className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-xs font-bold">✕</button>
+                            <button onClick={(e)=>{e.stopPropagation(); handleDelete(l);}} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors">✕</button>
                         </div>
                     ))}
                 </div>
@@ -117,6 +117,7 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
                     <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 리그 이름을 검색해보세요..." className="w-full bg-slate-900 p-4 pl-10 rounded-xl border border-slate-700 text-sm text-white focus:border-emerald-500 outline-none"/>
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">🔎</span>
                 </div>
+                
                 {renderLeagueList('CLUB', '⚽ Club Leagues')}
                 {renderLeagueList('NATIONAL', '🌍 National Teams')}
             </div>
@@ -124,7 +125,6 @@ export const AdminLeagueManager = ({ leagues, masterTeams }: { leagues: League[]
     );
 };
 
-// 2. 팀 관리자 (엠블럼 스타일 & 뒤로가기)
 export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], masterTeams: MasterTeam[] }) => {
     const [categoryFilter, setCategoryFilter] = useState<'ALL'|'CLUB'|'NATIONAL'>('ALL');
     const [selectedLeague, setSelectedLeague] = useState<string>(''); 
@@ -132,7 +132,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isQuickTierMode, setIsQuickTierMode] = useState(false);
 
-    // 편집 State
     const [tName, setTName] = useState('');
     const [tLogo, setTLogo] = useState('');
     const [tRegion, setTRegion] = useState('');
@@ -185,30 +184,23 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
 
     let displayLeagues = leagues;
     if (categoryFilter !== 'ALL') displayLeagues = displayLeagues.filter(l => l.category === categoryFilter);
+    const sortedLeagueNames = getSortedLeagues(displayLeagues.map(l=>l.name));
     
     return (
         <div className="space-y-6 animate-in fade-in">
-            {/* 1. 검색 패널 (순서 변경: 토글 -> 검색창) */}
             <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-4">
-                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                    <h3 className="text-emerald-400 font-bold text-sm">🔍 Team Search</h3>
-                </div>
-                
-                {/* 토글 버튼 (상단 노출) */}
-                <div className="flex bg-slate-900 rounded-lg p-1 w-fit">
-                    {['ALL', 'CLUB', 'NATIONAL'].map(t => (
-                        <button key={t} onClick={() => { setCategoryFilter(t as any); setSelectedLeague(''); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${categoryFilter === t ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{t}</button>
-                    ))}
-                </div>
-
-                {/* 검색창 */}
+                <h3 className="text-emerald-400 font-bold text-sm border-b border-slate-800 pb-2">🔍 Team Search</h3>
                 <div className="flex gap-2">
                     <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="🔍 팀 명을 검색해보세요..." className="flex-1 bg-slate-900 p-3 rounded text-sm border border-slate-700 text-white focus:border-emerald-500 outline-none"/>
-                    {searchTerm && <button onClick={()=>setSearchTerm('')} className="bg-slate-800 px-4 rounded font-bold text-slate-400 hover:text-white">Clear</button>}
+                    <button onClick={()=>setSearchTerm('')} className="bg-slate-800 px-4 rounded font-bold text-slate-400 hover:text-white">Clear</button>
+                </div>
+                <div className="flex bg-slate-900 rounded-lg p-1 w-fit">
+                    {['ALL', 'CLUB', 'NATIONAL'].map(t => (
+                        <button key={t} onClick={() => { setCategoryFilter(t as any); setSelectedLeague(''); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${categoryFilter === t ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-white'}`}>{t}</button>
+                    ))}
                 </div>
             </div>
 
-            {/* 2. 에디트 패널 */}
             <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden">
                 <div onClick={() => setIsEditOpen(!isEditOpen)} className="p-4 flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors">
                     <h3 className="text-emerald-400 font-bold text-sm">{editTeamId ? '✏️ Edit Team Info (Editing)' : '➕ Add New Team'}</h3>
@@ -217,19 +209,16 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 {isEditOpen && (
                     <div className="p-5 border-t border-slate-800 space-y-4 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1"><label className="text-[10px] text-slate-500 font-bold">Team Name</label><input value={tName} onChange={e=>setTName(e.target.value)} placeholder="Name" className="w-full bg-slate-900 p-3 rounded border border-slate-700 text-white text-sm"/></div>
-                            <div className="space-y-1"><label className="text-[10px] text-slate-500 font-bold">Logo URL</label><input value={tLogo} onChange={e=>setTLogo(e.target.value)} placeholder="URL" className="w-full bg-slate-900 p-3 rounded border border-slate-700 text-white text-sm"/></div>
+                            <div className="space-y-1"><label className="text-[10px] text-slate-500 font-bold">Team Name</label><input value={tName} onChange={e=>setTName(e.target.value)} placeholder="Team Name" className="w-full bg-slate-900 p-3 rounded border border-slate-700 text-white text-sm"/></div>
+                            <div className="space-y-1"><label className="text-[10px] text-slate-500 font-bold">Logo URL</label><input value={tLogo} onChange={e=>setTLogo(e.target.value)} placeholder="Logo URL" className="w-full bg-slate-900 p-3 rounded border border-slate-700 text-white text-sm"/></div>
                             <div className="space-y-1">
                                 <label className="text-[10px] text-slate-500 font-bold">League / Region</label>
                                 <select value={tRegion} onChange={e=>setTRegion(e.target.value)} className="w-full bg-slate-900 p-3 rounded border border-slate-700 text-white text-sm">
                                     <option value="">Select League...</option>
-                                    {getSortedLeagues(leagues.map(l=>l.name)).map(name => <option key={name} value={name}>{name}</option>)}
+                                    {sortedLeagueNames.map(name => <option key={name} value={name}>{name}</option>)}
                                 </select>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] text-slate-500 font-bold">Tier Setting</label>
-                                <TierSelector value={tTier} onChange={setTTier} />
-                            </div>
+                            <div className="space-y-1"><label className="text-[10px] text-slate-500 font-bold">Tier Setting</label><TierSelector value={tTier} onChange={setTTier} /></div>
                         </div>
                         <div className="flex gap-2 pt-2">
                             <button onClick={handleSaveTeam} className={`flex-1 py-3 rounded font-bold shadow-lg transition-all ${editTeamId ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>{editTeamId ? 'Update Team' : 'Add Team'}</button>
@@ -239,7 +228,6 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 )}
             </div>
 
-            {/* 3. 팀 리스트 */}
             <div className="space-y-8">
                 <div className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800 sticky top-0 z-10 shadow-xl">
                     <button onClick={() => setIsQuickTierMode(!isQuickTierMode)} className={`text-xs px-4 py-2 rounded-lg font-bold border transition-all ${isQuickTierMode ? 'bg-yellow-600 text-white border-yellow-500 shadow-lg shadow-yellow-900/50' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>⚡ 빠른 등급 설정 {isQuickTierMode ? 'ON' : 'OFF'}</button>
@@ -256,10 +244,12 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'NATIONAL' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-emerald-500 pl-2">⚽ Club Leagues</h3>
-                                <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                <div className="grid grid-cols-4 gap-3">
                                     {displayLeagues.filter(l=>l.category==='CLUB').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-emerald-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            <img src={l.logo || FALLBACK_IMG} className="w-10 h-10 object-contain bg-white rounded-full p-1 shadow-md" alt=""/>
+                                            <div className="w-10 h-10 bg-white rounded-full p-1 shadow-sm flex items-center justify-center">
+                                                <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
+                                            </div>
                                             <span className="text-[10px] text-center text-slate-400 font-bold group-hover:text-white leading-tight">{l.name}</span>
                                             <span className="absolute top-1 right-1 bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length}</span>
                                         </div>
@@ -270,10 +260,12 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                         {categoryFilter !== 'CLUB' && (
                             <div className="space-y-3">
                                 <h3 className="text-white font-bold text-sm border-l-4 border-blue-500 pl-2">🌍 National Teams</h3>
-                                <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                <div className="grid grid-cols-4 gap-3">
                                     {displayLeagues.filter(l=>l.category==='NATIONAL').map(l => (
                                         <div key={l.id} onClick={() => {setSelectedLeague(l.name); setTRegion(l.name);}} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-blue-500 cursor-pointer flex flex-col items-center gap-2 group transition-all aspect-square justify-center relative">
-                                            <img src={l.logo || FALLBACK_IMG} className="w-10 h-10 object-contain bg-white rounded-full p-1 shadow-md" alt=""/>
+                                            <div className="w-10 h-10 bg-white rounded-full p-1 shadow-sm flex items-center justify-center">
+                                                <img src={l.logo || FALLBACK_IMG} className="w-full h-full object-contain" alt=""/>
+                                            </div>
                                             <span className="text-[10px] text-center text-slate-400 font-bold group-hover:text-white leading-tight">{l.name}</span>
                                             <span className="absolute top-1 right-1 bg-slate-950 text-slate-500 text-[8px] px-1.5 rounded-full border border-slate-800">{masterTeams.filter(t=>t.region===l.name).length}</span>
                                         </div>
@@ -285,26 +277,18 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
                 )}
 
                 {(selectedLeague || searchTerm) && (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 animate-in fade-in">
+                    <div className="grid grid-cols-4 gap-3 animate-in fade-in">
                         {filteredTeams.map(t => (
                             <div key={t.id} onClick={() => !isQuickTierMode && handleSelectTeamToEdit(t)} className={`relative bg-slate-900 p-3 rounded-xl border flex flex-col items-center cursor-pointer group hover:border-emerald-500 transition-all ${editTeamId===t.docId ? 'border-emerald-500 bg-emerald-900/20 ring-1 ring-emerald-500' : 'border-slate-800'}`}>
-                                {/* 엠블럼 스타일 구분 (클럽: 꽉참, 국대: 전체) */}
-                                <div className="w-12 h-12 bg-white rounded-full overflow-hidden flex items-center justify-center mb-2 shadow-lg ring-1 ring-slate-700">
-                                    <img 
-                                        src={t.logo} 
-                                        className={`w-full h-full ${t.category === 'NATIONAL' ? 'object-contain' : 'object-cover scale-110'}`} 
-                                        alt="" 
-                                        onError={(e:any)=>e.target.src=FALLBACK_IMG}
-                                    />
+                                <div className="w-12 h-12 bg-white rounded-full overflow-hidden flex items-center justify-center mb-2 shadow-lg ring-1 ring-slate-700 p-1">
+                                    <img src={t.logo} className="w-full h-full object-contain" alt="" onError={(e:any)=>e.target.src=FALLBACK_IMG} />
                                 </div>
                                 <span className="text-[10px] text-center text-slate-300 w-full truncate font-bold group-hover:text-white">{t.name}</span>
-                                
                                 {isQuickTierMode ? (
                                     <TierSelector value={t.tier} onChange={(newTier) => t.docId && handleQuickTierUpdate(t.docId, newTier)} isMini={true} />
                                 ) : (
                                     <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${getTierBadgeColor(t.tier)}`}>{t.tier}</div>
                                 )}
-
                                 {!isQuickTierMode && (
                                     <button onClick={(e)=>{e.stopPropagation(); t.docId && handleDeleteTeam(t.docId);}} className="absolute top-1 left-1 w-5 h-5 flex items-center justify-center rounded-full bg-slate-950 text-slate-600 hover:text-red-500 hover:bg-red-950 transition-colors text-xs">✕</button>
                                 )}

@@ -26,20 +26,17 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
       onClick={() => onClick(match)} 
       className={`relative bg-slate-950 p-3 rounded-xl border ${match.status==='FINISHED'?'border-slate-800':'border-slate-700'} hover:border-emerald-500 cursor-pointer shadow-md group`}
     >
-        {/* 상단 라벨 */}
         <div className="flex justify-center items-center mb-2">
             <span className="text-[9px] font-bold text-slate-500 bg-slate-900 px-2 py-0.5 rounded uppercase">{match.matchLabel || 'Match'}</span>
         </div>
 
         <div className="flex justify-between items-center">
-            {/* Home Team */}
             <div className="flex flex-col items-center w-1/3 gap-1">
                 <img src={match.homeLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                 <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{match.home}</span>
                 <span className="text-[9px] text-slate-500">{match.homeOwner}</span>
             </div>
 
-            {/* Score & VS */}
             <div className="flex flex-col items-center justify-center">
                 {match.status === 'FINISHED' ? (
                     <div className="flex items-center gap-2 text-3xl font-black italic text-white tracking-tighter">
@@ -52,7 +49,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
                 )}
             </div>
 
-            {/* Away Team */}
             <div className="flex flex-col items-center w-1/3 gap-1">
                 <img src={match.awayLogo} className="w-10 h-10 rounded-full bg-white object-contain p-0.5 shadow" alt="" onError={(e)=>{e.currentTarget.src=FALLBACK_IMG}}/>
                 <span className="text-[10px] font-bold text-white leading-tight truncate w-full text-center">{match.away}</span>
@@ -60,16 +56,12 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         </div>
 
-        {/* 득점자 정보 & 하이라이트 (중앙 배치) */}
         {match.status === 'FINISHED' && (
             <div className="border-t border-slate-800 pt-2 mt-2 grid grid-cols-[1fr_auto_1fr] gap-2 text-[9px] items-center">
-                {/* Home Scorers */}
                 <div className="text-right space-y-0.5">
                     {match.homeScorers.map((s, idx)=><div key={`hg-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
                     {match.homeAssists.map((s, idx)=><div key={`ha-${idx}`} className="text-slate-500">🅰️ {s.name} {s.count>1 && `(${s.count})`}</div>)}
                 </div>
-
-                {/* 🔥 중앙 하이라이트 버튼 */}
                 <div className="flex justify-center">
                     {match.youtubeUrl ? (
                         <div 
@@ -79,12 +71,8 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
                         >
                             <img src="https://img.icons8.com/ios-filled/50/ff0000/youtube-play.png" className="w-4 h-4 group-hover/yt:scale-110 transition-transform" alt="YT"/>
                         </div>
-                    ) : (
-                        <div className="w-1 h-8 border-l border-slate-800"></div> // 하이라이트 없으면 구분선 역할
-                    )}
+                    ) : <div className="w-1 h-8 border-l border-slate-800"></div>}
                 </div>
-
-                {/* Away Scorers */}
                 <div className="text-left space-y-0.5">
                     {match.awayScorers.map((s, idx)=><div key={`ag-${idx}`} className="text-slate-300">⚽ {s.name} {s.count>1 && `(${s.count})`}</div>)}
                     {match.awayAssists.map((s, idx)=><div key={`aa-${idx}`} className="text-slate-500">🅰️ {s.name} {s.count>1 && `(${s.count})`}</div>)}
@@ -92,7 +80,6 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
             </div>
         )}
 
-        {/* 승률 예측 바 (경기 전) */}
         {match.status !== 'FINISHED' && match.home !== 'TBD' && match.home !== 'BYE' && match.away !== 'TBD' && (
             <div className="w-full mt-3 mb-2 px-1">
                 <div className="text-center text-[8px] text-slate-500 font-bold mb-1 tracking-widest uppercase">WIN RATE PREDICTION</div>
@@ -101,6 +88,13 @@ export const MatchCard = ({ match, onClick, activeRankingData, historyData }: Ma
                     <div className="relative flex-1 h-4 bg-slate-800 flex items-center justify-center overflow-hidden rounded-md border border-slate-700 shadow-inner">
                         <div style={{ width: isLoaded ? `${prediction.hRate}%` : '0%' }} className="h-full bg-gradient-to-r from-emerald-900 to-emerald-400 transition-all duration-1000 ease-out absolute left-0 top-0 skew-x-[-12deg] origin-bottom-left -ml-2 w-[calc(100%+8px)]" />
                         <div style={{ width: isLoaded ? `${prediction.aRate}%` : '0%' }} className="h-full bg-gradient-to-l from-blue-900 to-blue-400 transition-all duration-1000 ease-out absolute right-0 top-0 skew-x-[-12deg] origin-top-right -mr-2 w-[calc(100%+8px)]" />
+                        
+                        {/* 🔥 [복구] 번개 아이콘 (Z-index 및 위치 보정) */}
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center">
+                            <div className="w-5 h-5 bg-slate-900 border-2 border-slate-600 rounded-full flex items-center justify-center shadow-lg">
+                                <span className="text-[9px] text-yellow-400 font-bold animate-pulse">⚡</span>
+                            </div>
+                        </div>
                     </div>
                     <span className="text-[10px] font-black text-blue-400 w-8 text-left">{prediction.aRate}%</span>
                 </div>
