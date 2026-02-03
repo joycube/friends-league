@@ -39,10 +39,10 @@ export const AdminView = ({
   const [prizes, setPrizes] = useState({ first: 45000, second: 25000, third: 10000, scorer: 10000, assist: 10000 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
+  // ... (Owner, Team Matching States 생략 - 기존 유지)
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
-
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
   const [selectedMasterTeamId, setSelectedMasterTeamId] = useState('');
   const [filterCategory, setFilterCategory] = useState('ALL'); 
@@ -77,6 +77,7 @@ export const AdminView = ({
       }
   };
 
+  // 자동 계산 로직
   useEffect(() => {
       if (isAutoPrize) {
           setPrizes({ 
@@ -89,21 +90,19 @@ export const AdminView = ({
       }
   }, [inputTotalPrize, isAutoPrize]);
 
+  // 팀 배정 등 기존 함수 유지
   const handleAddTeamToSeason = async (seasonId: number) => {
       if (!selectedOwnerId || !selectedMasterTeamId) return alert("오너와 팀을 선택하세요.");
       const season = seasons.find(s => s.id === seasonId);
       if (!season) return;
-
       const owner = owners.find(o => String(o.id) === selectedOwnerId);
       const mTeam = masterTeams.find(t => String(t.id) === selectedMasterTeamId);
       if (!owner || !mTeam) return;
-
       const newTeam: Team = {
           id: Date.now(), seasonId, name: mTeam.name, logo: mTeam.logo, ownerName: owner.nickname,
           region: mTeam.region, tier: mTeam.tier,
           win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0, gd: 0
       };
-
       const updatedTeams = [...(season.teams || []), newTeam];
       await updateDoc(doc(db, "seasons", String(seasonId)), { teams: updatedTeams });
       alert(`${mTeam.name} 팀이 추가되었습니다.`);
@@ -111,12 +110,9 @@ export const AdminView = ({
 
   const handleRemoveTeamFromSeason = async (seasonId: number, teamId: number, teamName: string) => {
       if (!confirm(`정말 '${teamName}' 팀을 삭제하시겠습니까?\n주의: 이미 생성된 스케줄에서도 이 팀의 경기가 모두 삭제됩니다.`)) return;
-
       const season = seasons.find(s => s.id === seasonId);
       if (!season) return;
-
       const updatedTeams = season.teams.filter(t => t.id !== teamId);
-
       let updatedRounds = season.rounds ? [...season.rounds] : [];
       if (updatedRounds.length > 0) {
           updatedRounds = updatedRounds.map(r => ({
@@ -124,28 +120,17 @@ export const AdminView = ({
               matches: r.matches.filter(m => m.home !== teamName && m.away !== teamName)
           })).filter(r => r.matches.length > 0); 
       }
-
-      await updateDoc(doc(db, "seasons", String(seasonId)), { 
-          teams: updatedTeams,
-          rounds: updatedRounds
-      });
+      await updateDoc(doc(db, "seasons", String(seasonId)), { teams: updatedTeams, rounds: updatedRounds });
       alert("삭제 완료되었습니다.");
   };
 
   const handleGenerateSchedule = async (seasonId: number, isRegenerate = false) => {
       const season = seasons.find(s => s.id === seasonId);
       if (!season || season.teams.length < 2) return alert("최소 2팀 이상 필요합니다.");
-      
-      if (isRegenerate) {
-          if (!confirm("기존 스케줄을 삭제하고 다시 생성하시겠습니까? (기존 기록 삭제됨)")) return;
-      }
-
+      if (isRegenerate) { if (!confirm("기존 스케줄을 삭제하고 다시 생성하시겠습니까?")) return; }
       const rounds = generateRoundsLogic(season);
       await updateDoc(doc(db, "seasons", String(seasonId)), { rounds });
-      
-      if (confirm("스케줄이 생성 되었습니다. 해당 스케줄로 이동할까요?")) {
-          onNavigateToSchedule(seasonId);
-      }
+      if (confirm("스케줄이 생성 되었습니다. 해당 스케줄로 이동할까요?")) { onNavigateToSchedule(seasonId); }
   };
 
   const handleDeleteSchedule = async (seasonId: number) => {
@@ -165,16 +150,14 @@ export const AdminView = ({
       );
   }
 
+  // 시즌 관리 UI (기존 로직 유지)
   if (typeof adminTab === 'number') {
       const targetSeason = seasons.find(s => s.id === adminTab);
       if (!targetSeason) return <div>Season Not Found</div>;
-      
       let filteredMasterTeams = masterTeams;
       if (filterCategory !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
       if (filterLeague !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => t.region === filterLeague);
-      
       filteredMasterTeams = getSortedTeamsLogic(filteredMasterTeams, searchTeam);
-
       const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
 
       return (
@@ -183,19 +166,13 @@ export const AdminView = ({
                   <button onClick={() => setAdminTab('NEW')} className="text-slate-500 hover:text-white">← Back</button>
                   <h2 className="text-xl font-bold text-emerald-400">Manage: {targetSeason.name}</h2>
               </div>
-
-              {/* 팀 배정 컨트롤 패널 (모바일 최적화: width 100%, text-xs) */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 max-w-full overflow-hidden">
                   <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
                   <div className="flex flex-col gap-3 w-full">
-                      
-                      {/* 오너 선택 */}
                       <select value={selectedOwnerId} onChange={e=>setSelectedOwnerId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm">
                           <option value="">👤 Select Owner</option>
                           {owners.map(o => <option key={o.id} value={o.id}>{o.nickname}</option>)}
                       </select>
-
-                      {/* 필터 2개 나란히 (모바일에서도 깨지지 않게 flex-1) */}
                       <div className="flex gap-2 w-full">
                           <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-slate-400 text-xs flex-1 min-w-0">
                               <option value="ALL">Category</option>
@@ -207,27 +184,14 @@ export const AdminView = ({
                               {getSortedLeagues(leagues.map(l=>l.name)).map(l=><option key={l} value={l}>{l}</option>)}
                           </select>
                       </div>
-
-                      {/* 팀 선택 */}
                       <select value={selectedMasterTeamId} onChange={e=>setSelectedMasterTeamId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm">
                           <option value="">🛡️ Select Team ({filteredMasterTeams.length})</option>
                           {filteredMasterTeams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.tier})</option>)}
                       </select>
-                      
-                      {/* 검색창 */}
-                      <input 
-                        type="text" 
-                        value={searchTeam} 
-                        onChange={e=>setSearchTeam(e.target.value)} 
-                        placeholder="🔍 팀 이름 검색..." 
-                        className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm"
-                      />
-
+                      <input type="text" value={searchTeam} onChange={e=>setSearchTeam(e.target.value)} placeholder="🔍 팀 이름 검색..." className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm"/>
                       <button onClick={() => handleAddTeamToSeason(targetSeason.id)} className="bg-emerald-600 py-3 font-bold rounded hover:bg-emerald-500 w-full shadow-lg">매칭 완료 (Add Team)</button>
                   </div>
               </div>
-
-              {/* 참가 팀 목록 */}
               <div className="bg-black p-4 rounded-xl border border-slate-800">
                   <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
                       <h3 className="text-white font-bold text-sm">Step 2. 참가 팀 관리</h3>
@@ -305,43 +269,25 @@ export const AdminView = ({
                         3. Prizes (Total)
                         <button onClick={()=>setIsAutoPrize(!isAutoPrize)} className={`text-xs px-2 py-1 rounded border ${isAutoPrize?'border-emerald-500 text-emerald-400':'border-orange-500 text-orange-400'}`}>{isAutoPrize?'⚡ Auto Calc':'✏️ Manual Input'}</button>
                     </label>
-                    
                     <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">₩</span>
-                        <input 
-                            type="text" 
-                            value={displayPrize} 
-                            onChange={e => handlePrizeChange(e.target.value)} 
-                            className="bg-slate-950 w-full p-4 pl-8 rounded border border-slate-700 text-right text-lg font-bold text-emerald-400 mb-2" 
-                            placeholder="Total Prize"
-                        />
+                        <input type="text" value={displayPrize} onChange={e => handlePrizeChange(e.target.value)} className="bg-slate-950 w-full p-4 pl-8 rounded border border-slate-700 text-right text-lg font-bold text-emerald-400 mb-2" placeholder="Total Prize" />
                     </div>
 
-                    {isAutoPrize ? (
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="bg-slate-900 p-2 rounded flex justify-between border border-slate-800"><span>🥇 1st (45%)</span><span className="text-emerald-400">{formatNumber(prizes.first)}</span></div>
-                            <div className="bg-slate-900 p-2 rounded flex justify-between border border-slate-800"><span>🥈 2nd (25%)</span><span>{formatNumber(prizes.second)}</span></div>
-                            <div className="bg-slate-900 p-2 rounded flex justify-between border border-slate-800"><span>🥉 3rd (10%)</span><span>{formatNumber(prizes.third)}</span></div>
-                            <div className="col-span-2 grid grid-cols-2 gap-2">
-                                <div className="bg-slate-900 p-2 rounded flex justify-between border border-slate-800"><span>👟 Scorer (10%)</span><span>{formatNumber(prizes.scorer)}</span></div>
-                                <div className="bg-slate-900 p-2 rounded flex justify-between border border-slate-800"><span>🅰️ Assist (10%)</span><span>{formatNumber(prizes.assist)}</span></div>
-                            </div>
+                    {/* 🔥 [수정] 수동/자동 모두 동일한 레이아웃 적용 */}
+                    <div className="grid grid-cols-2 gap-4 bg-slate-950 p-4 rounded border border-slate-800">
+                        <div className="space-y-2">
+                            <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">🏆 TEAM PRIZES</p>
+                            <div><label className="text-[10px] text-slate-500">🥇 1st</label><input type="number" value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} readOnly={isAutoPrize} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAutoPrize?'opacity-50 cursor-not-allowed':''}`}/></div>
+                            <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} readOnly={isAutoPrize} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAutoPrize?'opacity-50 cursor-not-allowed':''}`}/></div>
+                            <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} readOnly={isAutoPrize} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAutoPrize?'opacity-50 cursor-not-allowed':''}`}/></div>
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-4 bg-slate-950 p-4 rounded border border-slate-800">
-                            <div className="space-y-2">
-                                <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">🏆 TEAM PRIZES</p>
-                                <div><label className="text-[10px] text-slate-500">🥇 1st</label><input type="number" value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
-                            </div>
-                            <div className="space-y-2">
-                                <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">👤 PLAYER PRIZES</p>
-                                <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500">🅰️ Assist</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
-                            </div>
+                        <div className="space-y-2">
+                            <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">👤 PLAYER PRIZES</p>
+                            <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} readOnly={isAutoPrize} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAutoPrize?'opacity-50 cursor-not-allowed':''}`}/></div>
+                            <div><label className="text-[10px] text-slate-500">🅰️ Assist</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} readOnly={isAutoPrize} className={`bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white ${isAutoPrize?'opacity-50 cursor-not-allowed':''}`}/></div>
                         </div>
-                    )}
+                    </div>
                 </div>
                 <button onClick={() => onCreateSeason(inputSeasonName, inputSeasonType, inputLeagueMode, inputTotalPrize, prizes)} className="w-full bg-emerald-600 py-4 rounded-xl font-bold hover:bg-emerald-500 shadow-lg shadow-emerald-900/50">Create Season</button>
             </div>

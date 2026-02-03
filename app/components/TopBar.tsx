@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// 🔥 export const 확인!
 export const TopBar = () => {
   const [currentTime, setCurrentTime] = useState<string>('');
 
@@ -33,7 +32,6 @@ export const TopBar = () => {
       
       <div className="absolute bottom-6 left-6 uppercase z-20 pointer-events-none">
         <h1 className="text-2xl md:text-4xl text-white font-black italic tracking-tighter">eFOOTBALL Live Evolution&trade;</h1>
-        <p className="text-emerald-400 text-[10px] md:text-xs font-sans not-italic tracking-widest mt-1">ver. P_16_01_Refactored</p>
       </div>
 
       <button onClick={handleShareLink} className="absolute top-4 right-4 z-30 bg-slate-900/80 p-2 rounded-full border border-slate-700 hover:bg-emerald-900 transition-colors">

@@ -1,6 +1,5 @@
 import React from 'react';
 
-// 🔥 export const 확인!
 export const Footer = () => {
   return (
     <footer className="bg-slate-950 border-t border-slate-900 mt-12 py-8 px-4 text-center">
@@ -20,7 +19,7 @@ export const Footer = () => {
       </div>
       
       <p className="text-[9px] text-slate-700 mt-2 uppercase tracking-widest">© 2026 eFootball Live Evolution League. All Rights Reserved.</p>
-      <p className="text-[9px] text-slate-800 mt-1">Created 26.01</p>
+      <p className="text-[9px] text-slate-800 mt-1">ver. P_16_02_Final</p>
     </footer>
   );
 };
