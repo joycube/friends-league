@@ -1,23 +1,43 @@
-// app/components/RecordInput.tsx
 import React from 'react';
 
-export const RecordInput = ({ type, inputValue, onInputChange, onAdd, onRemove, records, label, colorClass }: any) => {
+interface RecordInputProps {
+  type: string;
+  inputValue: { name: string, count: string };
+  onInputChange: (type: string, field: string, value: string) => void;
+  onAdd: (type: string) => void;
+  onRemove: (type: string, id: number) => void;
+  records: any[];
+  label: string;
+  colorClass: string;
+  datalistId: string;
+}
+
+// 🔥 [핵심] export const 로 시작해야 다른 파일에서 찾을 수 있습니다.
+export const RecordInput = ({ type, inputValue, onInputChange, onAdd, onRemove, records, label, colorClass, datalistId }: RecordInputProps) => {
   return (
-    <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 h-full flex flex-col relative z-10">
-      <p className={`text-xs font-bold mb-2 uppercase ${colorClass} border-b border-slate-700/50 pb-1`}>{label}</p>
-      <div className="flex gap-2 mb-3">
-        <input type="text" value={inputValue.name} onChange={(e) => onInputChange(type, 'name', e.target.value)} placeholder="Player Name" className="flex-1 bg-slate-900 text-base p-2 rounded-lg border border-slate-600 focus:border-blue-500 outline-none text-white w-full" />
-        <input type="number" value={inputValue.count} onChange={(e) => onInputChange(type, 'count', e.target.value)} className="w-12 bg-slate-900 text-base p-2 rounded-lg border border-slate-600 focus:border-blue-500 outline-none text-center text-white" />
-        <button onClick={() => onAdd(type)} className="bg-slate-700 text-white w-10 h-10 rounded-lg font-bold hover:bg-slate-600 transition-colors flex items-center justify-center text-xl touch-manipulation">+</button>
+    <div className="space-y-2">
+      <label className={`text-xs font-bold ${colorClass}`}>{label}</label>
+      <div className="flex gap-1">
+        <input 
+          list={datalistId}
+          value={inputValue.name} 
+          onChange={(e) => onInputChange(type, 'name', e.target.value)} 
+          placeholder="Player Name" 
+          className="bg-black border border-slate-700 p-2 rounded flex-1 text-white text-xs"
+        />
+        <input 
+          type="number" 
+          value={inputValue.count} 
+          onChange={(e) => onInputChange(type, 'count', e.target.value)} 
+          className="bg-black border border-slate-700 p-2 rounded w-12 text-center text-white text-xs"
+        />
+        <button onClick={() => onAdd(type)} className={`px-3 rounded font-bold text-xs ${colorClass === 'text-emerald-400' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-blue-900/50 text-blue-400'}`}>+</button>
       </div>
-      <div className="flex flex-col gap-1 overflow-y-auto max-h-[100px] flex-1">
-        {(records || []).map((r:any) => (
-          <div key={r.id} className="flex justify-between items-center bg-slate-900 px-3 py-2 rounded-md border border-slate-700">
-            <span className="text-sm text-slate-300">{r.name}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white bg-slate-700 px-2 py-0.5 rounded">{r.count}</span>
-              <button onClick={() => onRemove(type, r.id)} className="text-red-400 hover:text-red-300 text-sm px-2">✕</button>
-            </div>
+      <div className="space-y-1">
+        {records.map((r: any) => (
+          <div key={r.id} className="flex justify-between items-center bg-slate-900 px-2 py-1 rounded border border-slate-800">
+            <span className="text-white text-[10px]">{r.name} ({r.count})</span>
+            <button onClick={() => onRemove(type, r.id)} className="text-red-500 font-bold text-[10px]">×</button>
           </div>
         ))}
       </div>
