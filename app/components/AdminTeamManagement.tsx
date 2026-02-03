@@ -214,7 +214,8 @@ export const AdminTeamManager = ({ leagues, masterTeams }: { leagues: League[], 
 
             {/* 일괄 작업 버튼 */}
             <div className="flex gap-2 justify-end">
-                <button onClick={()=>handleBulkTier('C')} className="bg-slate-800 px-3 py-1 rounded text-[10px] text-slate-400 hover:bg-slate-700 hover:text-white">All to 'C'</button>
+                {/* 🔥 [수정] 따옴표를 &apos;로 변경하여 에러 해결 */}
+                <button onClick={()=>handleBulkTier('C')} className="bg-slate-800 px-3 py-1 rounded text-[10px] text-slate-400 hover:bg-slate-700 hover:text-white">All to &apos;C&apos;</button>
             </div>
 
             {/* 팀 리스트 Grid */}
