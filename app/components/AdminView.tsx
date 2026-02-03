@@ -18,25 +18,26 @@ interface AdminViewProps {
   onAdminLogin: (pw: string) => boolean;
   onCreateSeason: (name: string, type: string, mode: string, prize: number, prizesObj: any) => void;
   onSaveOwner: (name: string, photo: string, editId: string | null) => void;
+  // 🔥 [추가] 스케줄 생성 후 이동을 위한 콜백
+  onNavigateToSchedule: (seasonId: number) => void;
 }
 
-// 상금 포맷팅 함수
 const formatNumber = (num: number) => num.toLocaleString();
 const parseNumber = (str: string) => Number(str.replace(/,/g, ''));
 
 export const AdminView = ({ 
   adminTab, setAdminTab, seasons, owners, leagues, masterTeams,
-  onAdminLogin, onCreateSeason, onSaveOwner 
+  onAdminLogin, onCreateSeason, onSaveOwner, onNavigateToSchedule
 }: AdminViewProps) => {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState('');
   
-  // 새 시즌 생성 state
+  // 시즌 생성 state
   const [inputSeasonName, setInputSeasonName] = useState('');
   const [inputSeasonType, setInputSeasonType] = useState('LEAGUE');
   const [inputLeagueMode, setInputLeagueMode] = useState('SINGLE');
-  const [inputTotalPrize, setInputTotalPrize] = useState(100000); // 숫자 저장
-  const [displayPrize, setDisplayPrize] = useState('100,000'); // 화면 표시용 (콤마)
+  const [inputTotalPrize, setInputTotalPrize] = useState(100000);
+  const [displayPrize, setDisplayPrize] = useState('100,000');
   const [prizes, setPrizes] = useState({ first: 45000, second: 25000, third: 10000, scorer: 10000, assist: 10000 });
   const [isAutoPrize, setIsAutoPrize] = useState(true);
 
@@ -45,21 +46,31 @@ export const AdminView = ({
   const [newOwnerPhoto, setNewOwnerPhoto] = useState('');
   const [editOwnerId, setEditOwnerId] = useState<string | null>(null);
 
-  // 시즌 세부 관리 state (팀 배정용)
+  // 팀 배정 필터 state
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
   const [selectedMasterTeamId, setSelectedMasterTeamId] = useState('');
+  const [filterCategory, setFilterCategory] = useState('ALL'); // CLUB | NATIONAL
   const [filterLeague, setFilterLeague] = useState('ALL');
+  const [searchTeam, setSearchTeam] = useState('');
+
+  // 1. 로그인 세션 유지 (3시간)
+  useEffect(() => {
+    const loginTime = localStorage.getItem('adminLoginTime');
+    if (loginTime && Date.now() - Number(loginTime) < 3 * 60 * 60 * 1000) { // 3시간
+        setAdminUnlocked(true);
+    }
+  }, []);
 
   const handleLogin = () => {
       if (onAdminLogin(adminPwInput)) {
           setAdminUnlocked(true);
+          localStorage.setItem('adminLoginTime', String(Date.now())); // 시간 저장
           setAdminPwInput('');
       } else {
           alert("비밀번호가 일치하지 않습니다.");
       }
   };
 
-  // 상금 입력 핸들러 (콤마 처리)
   const handlePrizeChange = (val: string) => {
       const num = parseNumber(val);
       if (!isNaN(num)) {
@@ -83,7 +94,7 @@ export const AdminView = ({
       }
   }, [inputTotalPrize, isAutoPrize]);
 
-  // 시즌에 팀 추가 함수
+  // 팀 배정
   const handleAddTeamToSeason = async (seasonId: number) => {
       if (!selectedOwnerId || !selectedMasterTeamId) return alert("오너와 팀을 선택하세요.");
       const season = seasons.find(s => s.id === seasonId);
@@ -101,25 +112,58 @@ export const AdminView = ({
 
       const updatedTeams = [...(season.teams || []), newTeam];
       await updateDoc(doc(db, "seasons", String(seasonId)), { teams: updatedTeams });
+      alert(`${mTeam.name} 팀이 추가되었습니다.`);
   };
 
-  // 시즌 팀 삭제
-  const handleRemoveTeamFromSeason = async (seasonId: number, teamId: number) => {
+  // 팀 삭제 (스케줄 연동 삭제)
+  const handleRemoveTeamFromSeason = async (seasonId: number, teamId: number, teamName: string) => {
+      if (!confirm(`정말 '${teamName}' 팀을 삭제하시겠습니까?\n주의: 이미 생성된 스케줄에서도 이 팀의 경기가 모두 삭제됩니다.`)) return;
+
       const season = seasons.find(s => s.id === seasonId);
       if (!season) return;
+
+      // 1. 팀 목록에서 제거
       const updatedTeams = season.teams.filter(t => t.id !== teamId);
-      await updateDoc(doc(db, "seasons", String(seasonId)), { teams: updatedTeams });
+
+      // 2. 스케줄(라운드)에서 해당 팀 경기 제거
+      let updatedRounds = season.rounds ? [...season.rounds] : [];
+      if (updatedRounds.length > 0) {
+          updatedRounds = updatedRounds.map(r => ({
+              ...r,
+              matches: r.matches.filter(m => m.home !== teamName && m.away !== teamName)
+          })).filter(r => r.matches.length > 0); // 경기가 없는 라운드는 제거하거나 유지 (여기선 유지하되 빈 라운드 가능성 있음)
+      }
+
+      await updateDoc(doc(db, "seasons", String(seasonId)), { 
+          teams: updatedTeams,
+          rounds: updatedRounds
+      });
+      alert("삭제 완료되었습니다.");
   };
 
-  // 스케줄 생성
-  const handleGenerateSchedule = async (seasonId: number) => {
+  // 스케줄 생성/재생성
+  const handleGenerateSchedule = async (seasonId: number, isRegenerate = false) => {
       const season = seasons.find(s => s.id === seasonId);
       if (!season || season.teams.length < 2) return alert("최소 2팀 이상 필요합니다.");
-      if (!confirm("기존 스케줄이 초기화됩니다. 계속하시겠습니까?")) return;
+      
+      if (isRegenerate) {
+          if (!confirm("기존 스케줄을 삭제하고 다시 생성하시겠습니까? (기존 기록 삭제됨)")) return;
+      }
 
       const rounds = generateRoundsLogic(season);
       await updateDoc(doc(db, "seasons", String(seasonId)), { rounds });
-      alert("스케줄 생성 완료!");
+      
+      // 안내 팝업
+      if (confirm("스케줄이 생성 되었습니다. 해당 스케줄로 이동할까요?")) {
+          onNavigateToSchedule(seasonId);
+      }
+  };
+
+  // 스케줄 삭제
+  const handleDeleteSchedule = async (seasonId: number) => {
+      if (!confirm("해당 시즌의 모든 스케줄과 경기 기록을 삭제하시겠습니까?")) return;
+      await updateDoc(doc(db, "seasons", String(seasonId)), { rounds: [] });
+      alert("스케줄이 삭제되었습니다.");
   };
 
   if (!adminUnlocked) {
@@ -133,12 +177,20 @@ export const AdminView = ({
       );
   }
 
-  // 시즌 상세 관리 뷰 (복구된 부분)
+  // 시즌 상세 관리 뷰
   if (typeof adminTab === 'number') {
       const targetSeason = seasons.find(s => s.id === adminTab);
       if (!targetSeason) return <div>Season Not Found</div>;
       
-      const filteredMasterTeams = getSortedTeamsLogic(masterTeams.filter(t => filterLeague === 'ALL' || t.region === filterLeague), '');
+      // 팀 필터링 로직
+      let filteredMasterTeams = masterTeams;
+      if (filterCategory !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
+      if (filterLeague !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => t.region === filterLeague);
+      
+      // 검색어 필터 (이름 검색)
+      filteredMasterTeams = getSortedTeamsLogic(filteredMasterTeams, searchTeam);
+
+      const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
 
       return (
           <div className="space-y-6 animate-in fade-in">
@@ -149,30 +201,60 @@ export const AdminView = ({
 
               {/* 팀 배정 컨트롤 패널 */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <select value={selectedOwnerId} onChange={e=>setSelectedOwnerId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white">
-                          <option value="">1. Select Owner</option>
+                  <h3 className="text-white font-bold text-sm border-b border-slate-800 pb-2">Step 1. 팀 & 오너 매칭</h3>
+                  <div className="grid grid-cols-1 gap-3">
+                      {/* 1. 오너 선택 */}
+                      <select value={selectedOwnerId} onChange={e=>setSelectedOwnerId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full">
+                          <option value="">👤 Select Owner</option>
                           {owners.map(o => <option key={o.id} value={o.id}>{o.nickname}</option>)}
                       </select>
-                      <div className="flex gap-2">
-                          <select value={filterLeague} onChange={e=>setFilterLeague(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-slate-400 w-1/3">
-                              <option value="ALL">All Leagues</option>
+
+                      {/* 2. 팀 필터 옵션 */}
+                      <div className="grid grid-cols-2 gap-2">
+                          <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-slate-400 text-xs">
+                              <option value="ALL">All Categories</option>
+                              <option value="CLUB">Clubs</option>
+                              <option value="NATIONAL">National Teams</option>
+                          </select>
+                          <select value={filterLeague} onChange={e=>setFilterLeague(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-slate-400 text-xs">
+                              <option value="ALL">All Regions</option>
                               {getSortedLeagues(leagues.map(l=>l.name)).map(l=><option key={l} value={l}>{l}</option>)}
                           </select>
-                          <select value={selectedMasterTeamId} onChange={e=>setSelectedMasterTeamId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-2/3">
-                              <option value="">2. Select Team</option>
-                              {filteredMasterTeams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.tier})</option>)}
-                          </select>
                       </div>
-                      <button onClick={() => handleAddTeamToSeason(targetSeason.id)} className="bg-emerald-600 font-bold rounded hover:bg-emerald-500">Add Team to Season</button>
+
+                      {/* 3. 팀 선택 */}
+                      <select value={selectedMasterTeamId} onChange={e=>setSelectedMasterTeamId(e.target.value)} className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full">
+                          <option value="">🛡️ Select Team ({filteredMasterTeams.length})</option>
+                          {filteredMasterTeams.map(t => <option key={t.id} value={t.id}>{t.name} ({t.tier})</option>)}
+                      </select>
+                      
+                      {/* 4. 검색창 (하단 배치) */}
+                      <input 
+                        type="text" 
+                        value={searchTeam} 
+                        onChange={e=>setSearchTeam(e.target.value)} 
+                        placeholder="🔍 팀 이름을 검색해보세요..." 
+                        className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm"
+                      />
+
+                      <button onClick={() => handleAddTeamToSeason(targetSeason.id)} className="bg-emerald-600 py-3 font-bold rounded hover:bg-emerald-500 w-full">매칭 완료 (Add Team)</button>
                   </div>
               </div>
 
               {/* 현재 배정된 팀 목록 */}
               <div className="bg-black p-4 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-white font-bold">Participating Teams ({targetSeason.teams?.length || 0})</h3>
-                      <button onClick={() => handleGenerateSchedule(targetSeason.id)} className="bg-purple-600 px-4 py-2 rounded text-xs font-bold hover:bg-purple-500 shadow-lg shadow-purple-900/50">⚡ Generate Schedule</button>
+                  <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                      <h3 className="text-white font-bold">Step 2. 참가 팀 관리 ({targetSeason.teams?.length || 0})</h3>
+                      <div className="flex gap-2">
+                          {hasSchedule ? (
+                              <>
+                                <button onClick={() => handleGenerateSchedule(targetSeason.id, true)} className="bg-blue-600 px-3 py-2 rounded text-xs font-bold hover:bg-blue-500">🔄 스케줄 재생성</button>
+                                <button onClick={() => handleDeleteSchedule(targetSeason.id)} className="bg-red-900 px-3 py-2 rounded text-xs font-bold hover:bg-red-700">🗑️ 스케줄 삭제</button>
+                              </>
+                          ) : (
+                              <button onClick={() => handleGenerateSchedule(targetSeason.id, false)} className="bg-purple-600 px-4 py-2 rounded text-xs font-bold hover:bg-purple-500 shadow-lg shadow-purple-900/50">⚡ 스케줄 생성</button>
+                          )}
+                      </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {targetSeason.teams?.map(t => (
@@ -182,8 +264,9 @@ export const AdminView = ({
                                   <p className="text-xs font-bold text-white truncate">{t.name}</p>
                                   <p className="text-[10px] text-slate-500">{t.ownerName}</p>
                               </div>
-                              <span className={`absolute top-1 right-1 px-1 rounded text-[8px] ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
-                              <button onClick={() => handleRemoveTeamFromSeason(targetSeason.id, t.id)} className="absolute inset-0 bg-red-900/80 text-white font-bold opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded">Remove</button>
+                              <span className={`absolute top-1 right-8 px-1 rounded text-[8px] ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
+                              {/* 삭제 버튼: X 표시, 클릭 시 확인창 */}
+                              <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamFromSeason(targetSeason.id, t.id, t.name); }} className="absolute top-1 right-1 text-slate-600 hover:text-red-500 font-bold p-1">✕</button>
                           </div>
                       ))}
                       {(!targetSeason.teams || targetSeason.teams.length === 0) && <p className="text-slate-600 text-xs col-span-4 text-center py-4">No teams assigned yet.</p>}
@@ -238,7 +321,6 @@ export const AdminView = ({
                         <button onClick={()=>setIsAutoPrize(!isAutoPrize)} className={`text-xs px-2 py-1 rounded border ${isAutoPrize?'border-emerald-500 text-emerald-400':'border-orange-500 text-orange-400'}`}>{isAutoPrize?'⚡ Auto Calc':'✏️ Manual Input'}</button>
                     </label>
                     
-                    {/* 상금 입력 (콤마 적용) */}
                     <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">₩</span>
                         <input 
@@ -261,7 +343,20 @@ export const AdminView = ({
                             </div>
                         </div>
                     ) : (
-                        <div className="text-center text-xs text-orange-400">Manual mode selected. Prizes will be set to 0 initially.</div>
+                        // 🔥 [복구] 매뉴얼 입력 폼 복구
+                        <div className="grid grid-cols-2 gap-4 bg-slate-950 p-4 rounded border border-slate-800">
+                            <div className="space-y-2">
+                                <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">🏆 TEAM PRIZES</p>
+                                <div><label className="text-[10px] text-slate-500">🥇 1st</label><input type="number" value={prizes.first} onChange={e=>setPrizes({...prizes, first:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500">🥈 2nd</label><input type="number" value={prizes.second} onChange={e=>setPrizes({...prizes, second:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500">🥉 3rd</label><input type="number" value={prizes.third} onChange={e=>setPrizes({...prizes, third:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-[10px] text-slate-500 font-bold border-b border-slate-700 pb-1">👤 PLAYER PRIZES</p>
+                                <div><label className="text-[10px] text-slate-500">👟 Scorer</label><input type="number" value={prizes.scorer} onChange={e=>setPrizes({...prizes, scorer:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500">🅰️ Assist</label><input type="number" value={prizes.assist} onChange={e=>setPrizes({...prizes, assist:Number(e.target.value)})} className="bg-slate-900 w-full p-2 rounded border border-slate-700 text-right text-sm text-white"/></div>
+                            </div>
+                        </div>
                     )}
                 </div>
                 <button onClick={() => onCreateSeason(inputSeasonName, inputSeasonType, inputLeagueMode, inputTotalPrize, prizes)} className="w-full bg-emerald-600 py-4 rounded-xl font-bold hover:bg-emerald-500 shadow-lg shadow-emerald-900/50">Create Season</button>
