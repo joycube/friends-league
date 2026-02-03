@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../firebase'; 
 import { updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { Season, Owner, League, MasterTeam, Team, Banner } from '../types';
@@ -49,11 +49,8 @@ export const AdminView = ({
   // 팀 배정 관련 State
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
   const [selectedMasterTeamId, setSelectedMasterTeamId] = useState('');
-  const [filterCategory, setFilterCategory] = useState('ALL'); 
-  const [filterLeague, setFilterLeague] = useState('ALL');
-  const [filterTier, setFilterTier] = useState('ALL'); // 🔥 등급 필터 추가
+  const [selectedMatchingLeague, setSelectedMatchingLeague] = useState<string>(''); // 리그 엠블럼 선택용
   const [searchTeam, setSearchTeam] = useState('');
-  const [visibleTeamCount, setVisibleTeamCount] = useState(12); // 🔥 리드모어 기능
 
   useEffect(() => {
     const loginTime = localStorage.getItem('adminLoginTime');
@@ -83,26 +80,33 @@ export const AdminView = ({
       }
   }, [inputTotalPrize, isAutoPrize]);
 
-  // 🔥 [수정] 랜덤 팀 선택 로직 (중복 완벽 방지)
+  // 🔥 [수정] 랜덤 팀 선택 로직 (알고리즘 개선)
   const handleRandomTeam = (seasonId: number) => {
       const season = seasons.find(s => s.id === seasonId);
       if (!season) return;
 
-      // 1. 현재 필터링 조건 (리그, 카테고리, 등급) 적용
-      let candidates = masterTeams;
-      if (filterCategory !== 'ALL') candidates = candidates.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
-      if (filterLeague !== 'ALL') candidates = candidates.filter(t => t.region === filterLeague);
-      if (filterTier !== 'ALL') candidates = candidates.filter(t => t.tier === filterTier);
+      // 1. 이미 배정된 팀 ID 집합 생성 (이름 기준보다 ID 기준이 정확함)
+      const assignedTeamNames = new Set(season.teams?.map(t => t.name) || []);
 
-      // 2. 이미 시즌에 배정된 팀 이름 제외
-      const assignedNames = new Set(season.teams?.map(t => t.name) || []);
-      candidates = candidates.filter(t => !assignedNames.has(t.name));
+      // 2. 전체 팀 중에서 '아직 배정되지 않은' 팀만 필터링
+      let candidates = masterTeams.filter(t => !assignedTeamNames.has(t.name));
 
-      if (candidates.length === 0) return alert("조건에 맞는 남은 팀이 없습니다 (모두 배정됨).");
+      // 3. 현재 선택된 리그 필터가 있다면 적용
+      if (selectedMatchingLeague) {
+          candidates = candidates.filter(t => t.region === selectedMatchingLeague);
+      }
 
-      // 3. 랜덤 픽
-      const randomTeam = candidates[Math.floor(Math.random() * candidates.length)];
-      setSelectedMasterTeamId(String(randomTeam.id)); 
+      if (candidates.length === 0) return alert("선택 가능한 남은 팀이 없습니다.");
+
+      // 4. 랜덤 픽 (1개만 선택)
+      const randomIndex = Math.floor(Math.random() * candidates.length);
+      const randomTeam = candidates[randomIndex];
+
+      // 5. 선택값 반영
+      setSelectedMasterTeamId(String(randomTeam.id));
+      
+      // 편의상 해당 팀의 리그로 뷰 이동 (옵션)
+      if (!selectedMatchingLeague) setSelectedMatchingLeague(randomTeam.region);
   };
 
   const handleAddTeamToSeason = async (seasonId: number) => {
@@ -118,9 +122,7 @@ export const AdminView = ({
       };
       const updatedTeams = [...(season.teams || []), newTeam];
       await updateDoc(doc(db, "seasons", String(seasonId)), { teams: updatedTeams });
-      
-      // 추가 후 선택 초기화
-      setSelectedMasterTeamId('');
+      setSelectedMasterTeamId(''); // 추가 후 초기화
   };
 
   const handleRemoveTeamFromSeason = async (seasonId: number, teamId: number, teamName: string) => {
@@ -175,18 +177,20 @@ export const AdminView = ({
       const targetSeason = seasons.find(s => s.id === adminTab);
       if (!targetSeason) return <div>Season Not Found</div>;
       
-      // 🔥 [핵심] 필터링 로직 (이미 배정된 팀 제외)
+      const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
+      
+      // 이미 배정된 팀 필터링
       const assignedTeamNames = new Set(targetSeason.teams?.map(t => t.name) || []);
       
-      let filteredMasterTeams = masterTeams.filter(t => !assignedTeamNames.has(t.name)); // 중복 제외
-
-      if (filterCategory !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => filterCategory === 'CLUB' ? t.category !== 'NATIONAL' : t.category === 'NATIONAL');
-      if (filterLeague !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => t.region === filterLeague);
-      if (filterTier !== 'ALL') filteredMasterTeams = filteredMasterTeams.filter(t => t.tier === filterTier); // 등급 필터
-      
-      filteredMasterTeams = getSortedTeamsLogic(filteredMasterTeams, searchTeam);
-      
-      const hasSchedule = targetSeason.rounds && targetSeason.rounds.length > 0;
+      // 보여줄 팀 목록 결정
+      let availableTeams = masterTeams.filter(t => !assignedTeamNames.has(t.name));
+      if (selectedMatchingLeague) {
+          availableTeams = availableTeams.filter(t => t.region === selectedMatchingLeague);
+      }
+      if (searchTeam) {
+          availableTeams = availableTeams.filter(t => t.name.toLowerCase().includes(searchTeam.toLowerCase()));
+      }
+      availableTeams = getSortedTeamsLogic(availableTeams, '');
 
       return (
           <div className="space-y-6 animate-in fade-in">
@@ -211,46 +215,77 @@ export const AdminView = ({
                       </select>
                   </div>
 
-                  {/* 2. 팀 검색 필터 */}
-                  <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
-                      <div className="flex justify-between items-center">
-                          <label className="text-[10px] text-slate-500 font-bold">2. Search Team Filters</label>
-                          <button onClick={() => handleRandomTeam(targetSeason.id)} className="bg-purple-700 px-3 py-1 rounded text-[10px] font-bold text-white hover:bg-purple-600 shadow-lg">🎲 Random Pick</button>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs">
-                              <option value="ALL">All Categories</option><option value="CLUB">Club</option><option value="NATIONAL">National</option>
-                          </select>
-                          <select value={filterLeague} onChange={e=>setFilterLeague(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs">
-                              <option value="ALL">All Leagues</option>
-                              {getSortedLeagues(leagues.map(l=>l.name)).map(l=><option key={l} value={l}>{l}</option>)}
-                          </select>
-                          <select value={filterTier} onChange={e=>setFilterTier(e.target.value)} className="bg-black p-2 rounded border border-slate-700 text-slate-300 text-xs">
-                              <option value="ALL">All Tiers</option><option value="S">Tier S</option><option value="A">Tier A</option><option value="B">Tier B</option><option value="C">Tier C</option>
-                          </select>
-                          <input type="text" value={searchTeam} onChange={e=>setSearchTeam(e.target.value)} placeholder="🔍 Name..." className="bg-black p-2 rounded border border-slate-700 text-white text-xs"/>
-                      </div>
-                  </div>
-
-                  {/* 3. 팀 선택 그리드 (직관적 UI) */}
+                  {/* 2. 팀 검색/선택 영역 */}
                   <div className="space-y-2">
-                      <label className="text-[10px] text-slate-500 font-bold">3. Select Team from Grid ({filteredMasterTeams.length} available)</label>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                          {filteredMasterTeams.slice(0, visibleTeamCount).map(t => (
-                              <div 
-                                key={t.id} 
-                                onClick={() => setSelectedMasterTeamId(String(t.id))} 
-                                className={`relative p-2 rounded-lg border cursor-pointer flex flex-col items-center gap-1 transition-all ${selectedMasterTeamId === String(t.id) ? 'bg-emerald-900/40 border-emerald-500 ring-1 ring-emerald-500' : 'bg-black border-slate-800 hover:border-slate-600'}`}
-                              >
-                                  <img src={t.logo} className="w-8 h-8 object-contain" alt=""/>
-                                  <span className="text-[9px] text-center text-slate-300 w-full truncate font-bold">{t.name}</span>
-                                  <span className={`text-[8px] px-1 rounded ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
-                              </div>
-                          ))}
+                      <div className="flex justify-between items-center">
+                          <label className="text-[10px] text-slate-500 font-bold">2. Select Team</label>
+                          <div className="flex gap-2">
+                              {selectedMatchingLeague && <button onClick={()=>setSelectedMatchingLeague('')} className="text-[10px] text-slate-400 border border-slate-700 px-2 rounded hover:text-white">Show All Leagues</button>}
+                              <button onClick={() => handleRandomTeam(targetSeason.id)} className="bg-purple-700 px-3 py-1 rounded text-[10px] font-bold text-white hover:bg-purple-600 shadow-lg">🎲 Random Pick</button>
+                          </div>
                       </div>
-                      {/* Read More */}
-                      {filteredMasterTeams.length > visibleTeamCount && (
-                          <button onClick={() => setVisibleTeamCount(prev => prev + 12)} className="w-full py-2 bg-slate-800 text-slate-400 text-xs font-bold rounded hover:bg-slate-700">▼ Show More Teams</button>
+
+                      {/* 검색창 */}
+                      <input 
+                        type="text" 
+                        value={searchTeam} 
+                        onChange={e=>setSearchTeam(e.target.value)} 
+                        placeholder="🔍 팀 이름 검색 (리그 무관)..." 
+                        className="bg-slate-950 p-3 rounded border border-slate-700 text-white w-full text-sm mb-2"
+                      />
+
+                      {/* A. 리그 미선택 & 검색어 없음: 리그 엠블럼 노출 (그루핑) */}
+                      {!selectedMatchingLeague && !searchTeam ? (
+                          <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                              {/* 클럽 리그 */}
+                              <div>
+                                  <p className="text-[10px] text-emerald-500 font-bold mb-1 ml-1">⚽ CLUB LEAGUES</p>
+                                  <div className="grid grid-cols-5 gap-2">
+                                      {getSortedLeagues(leagues.filter(l=>l.category==='CLUB').map(l=>l.name)).map(name => {
+                                          const l = leagues.find(l=>l.name===name);
+                                          if(!l) return null;
+                                          return (
+                                              <div key={l.id} onClick={()=>setSelectedMatchingLeague(l.name)} className="bg-black p-2 rounded-lg border border-slate-800 cursor-pointer hover:border-emerald-500 flex flex-col items-center gap-1 group">
+                                                  <img src={l.logo} className="w-8 h-8 object-contain" alt=""/>
+                                                  <span className="text-[9px] text-slate-400 group-hover:text-white truncate w-full text-center">{l.name}</span>
+                                              </div>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                              {/* 국가대표 */}
+                              <div>
+                                  <p className="text-[10px] text-blue-500 font-bold mb-1 ml-1">🌍 NATIONAL TEAMS</p>
+                                  <div className="grid grid-cols-5 gap-2">
+                                      {getSortedLeagues(leagues.filter(l=>l.category==='NATIONAL').map(l=>l.name)).map(name => {
+                                          const l = leagues.find(l=>l.name===name);
+                                          if(!l) return null;
+                                          return (
+                                              <div key={l.id} onClick={()=>setSelectedMatchingLeague(l.name)} className="bg-black p-2 rounded-lg border border-slate-800 cursor-pointer hover:border-blue-500 flex flex-col items-center gap-1 group">
+                                                  <img src={l.logo} className="w-8 h-8 object-contain" alt=""/>
+                                                  <span className="text-[9px] text-slate-400 group-hover:text-white truncate w-full text-center">{l.name}</span>
+                                              </div>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          </div>
+                      ) : (
+                          // B. 리그 선택됨 or 검색중: 팀 그리드 노출
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                              {availableTeams.map(t => (
+                                  <div 
+                                    key={t.id} 
+                                    onClick={() => setSelectedMasterTeamId(String(t.id))} 
+                                    className={`relative p-2 rounded-lg border cursor-pointer flex flex-col items-center gap-1 transition-all ${selectedMasterTeamId === String(t.id) ? 'bg-emerald-900/40 border-emerald-500 ring-1 ring-emerald-500' : 'bg-black border-slate-800 hover:border-slate-600'}`}
+                                  >
+                                      <img src={t.logo} className="w-8 h-8 object-contain" alt=""/>
+                                      <span className="text-[9px] text-center text-slate-300 w-full truncate font-bold">{t.name}</span>
+                                      <span className={`text-[8px] px-1 rounded ${getTierBadgeColor(t.tier)}`}>{t.tier}</span>
+                                  </div>
+                              ))}
+                              {availableTeams.length === 0 && <p className="col-span-full text-center text-slate-500 text-xs py-4">No available teams found.</p>}
+                          </div>
                       )}
                   </div>
 
