@@ -6,7 +6,6 @@ import { db } from './firebase';
 import { doc, updateDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 import { Season, Match } from './types';
 
-// 🏗️ Components (경로가 ./components/ 로 시작해야 합니다)
 import { TopBar } from './components/TopBar';
 import { NavTabs } from './components/NavTabs';
 import { BannerSlider } from './components/BannerSlider';
@@ -18,7 +17,6 @@ import { TutorialView } from './components/TutorialView';
 import { AdminView } from './components/AdminView';
 import { MatchEditModal } from './components/MatchEditModal';
 
-// 🎣 Hooks & Utils
 import { useLeagueData } from './hooks/useLeagueData';
 import { useLeagueStats } from './hooks/useLeagueStats';
 
@@ -32,7 +30,6 @@ export default function FootballLeagueApp() {
   
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
-  // URL 파라미터 처리
   useEffect(() => {
     if (seasons.length === 0) return;
     const params = new URLSearchParams(window.location.search);
@@ -50,7 +47,6 @@ export default function FootballLeagueApp() {
     }
   }, [seasons]);
 
-  // URL 업데이트
   useEffect(() => {
     if (viewSeasonId > 0) {
         const params = new URLSearchParams(window.location.search);
@@ -68,7 +64,6 @@ export default function FootballLeagueApp() {
       if(!s || !s.rounds) return;
 
       let newRounds = [...s.rounds];
-      
       newRounds = newRounds.map(r => ({
           ...r,
           matches: r.matches.map(m => m.id === matchId ? { 
@@ -79,7 +74,6 @@ export default function FootballLeagueApp() {
           } : m)
       }));
 
-      // 토너먼트 진행 로직
       if (s.type === 'TOURNAMENT' && editingMatch.nextMatchId) {
           let winningTeam: {name: string, logo: string, owner: string} | null = null;
           const h = Number(hScore); const a = Number(aScore);
@@ -138,21 +132,22 @@ export default function FootballLeagueApp() {
       return Array.from(players);
   };
 
+  // 🔥 [추가] 스케줄 이동 핸들러
+  const handleNavigateToSchedule = (seasonId: number) => {
+      setCurrentView('SCHEDULE');
+      setViewSeasonId(seasonId);
+  };
+
   return (
     <div className="min-h-screen bg-[#020617] text-white font-black italic tracking-tighter overflow-x-hidden pb-20">
-      
-      {/* 1. Header Area */}
       <div className="relative">
           <BannerSlider banners={banners} />
           <TopBar />
       </div>
 
-      {/* 2. Navigation */}
       <NavTabs currentView={currentView} setCurrentView={setCurrentView} />
 
-      {/* 3. Main Content Area */}
       <main className="max-w-6xl mx-auto px-4 md:px-8 space-y-8">
-        
         {currentView === 'RANKING' && (
             <RankingView 
                 seasons={seasons} 
@@ -192,14 +187,13 @@ export default function FootballLeagueApp() {
                 onAdminLogin={(pw) => pw === '0705'}
                 onCreateSeason={handleCreateSeason}
                 onSaveOwner={handleSaveOwner}
+                onNavigateToSchedule={handleNavigateToSchedule} // 🔥 [추가] 여기!
             />
         )}
       </main>
 
-      {/* 4. Footer */}
       <Footer />
 
-      {/* 5. Modals */}
       {editingMatch && (
           <MatchEditModal 
               match={editingMatch} 
