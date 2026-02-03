@@ -132,7 +132,6 @@ export default function FootballLeagueApp() {
       return Array.from(players);
   };
 
-  // 🔥 [추가] 스케줄 이동 핸들러
   const handleNavigateToSchedule = (seasonId: number) => {
       setCurrentView('SCHEDULE');
       setViewSeasonId(seasonId);
@@ -184,10 +183,11 @@ export default function FootballLeagueApp() {
                 owners={owners}
                 leagues={leagues}
                 masterTeams={masterTeams}
+                banners={banners} // 🔥 [추가] 여기!
                 onAdminLogin={(pw) => pw === '0705'}
                 onCreateSeason={handleCreateSeason}
                 onSaveOwner={handleSaveOwner}
-                onNavigateToSchedule={handleNavigateToSchedule} // 🔥 [추가] 여기!
+                onNavigateToSchedule={handleNavigateToSchedule} 
             />
         )}
       </main>
